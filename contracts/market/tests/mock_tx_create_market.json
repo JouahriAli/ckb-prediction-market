@@ -1,0 +1,62 @@
+{
+  "mock_info": {
+    "inputs": [],
+    "cell_deps": [
+      {
+        "cell_dep": {
+          "out_point": {
+            "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "index": "0x0"
+          },
+          "dep_type": "code"
+        },
+        "output": {
+          "capacity": "0x100000000",
+          "lock": {
+            "code_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "hash_type": "data2",
+            "args": "0x"
+          },
+          "type": null
+        },
+        "data": "0x{{ data ../build/market }}"
+      }
+    ],
+    "header_deps": []
+  },
+  "tx": {
+    "version": "0x0",
+    "cell_deps": [
+      {
+        "out_point": {
+          "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000001",
+          "index": "0x0"
+        },
+        "dep_type": "code"
+      }
+    ],
+    "header_deps": [],
+    "inputs": [],
+    "outputs": [
+      {
+        "capacity": "0x174876e800",
+        "lock": {
+          "code_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "hash_type": "data2",
+          "args": "0x"
+        },
+        "type": {
+          "code_hash": "0x{{ hash ../build/market }}",
+          "hash_type": "data2",
+          "args": "0x"
+        }
+      }
+    ],
+    "outputs_data": [
+      "0x00000000000000000000000000000000000000000000000000000000000000000000"
+    ],
+    "witnesses": [
+      "0x"
+    ]
+  }
+}

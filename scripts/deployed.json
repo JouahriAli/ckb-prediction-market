@@ -1,0 +1,34 @@
+{
+  "network": "testnet",
+  "deployedAt": "2025-12-07T10:27:00.000Z",
+  "market": {
+    "txHash": "0x909becfd148b9b0ddabc98f244a98abcd2360fcf94107432068dca01a2e010e4",
+    "outPoint": {
+      "txHash": "0x909becfd148b9b0ddabc98f244a98abcd2360fcf94107432068dca01a2e010e4",
+      "index": "0x0"
+    },
+    "note": "Market contract deployed successfully"
+  },
+  "marketCell": {
+    "txHash": "0x4f666a10114a564c25a0f09b7ea64f3787722f922403c8971ad079f666eb785b",
+    "outPoint": {
+      "txHash": "0x4f666a10114a564c25a0f09b7ea64f3787722f922403c8971ad079f666eb785b",
+      "index": "0x0"
+    },
+    "typeScript": {
+      "codeHash": "0x37402b2f7c5b30611d34bad3b76b9f3607aa297213525d998159a6f7c7fd9421",
+      "hashType": "data2",
+      "args": "0x"
+    },
+    "createdAt": "2025-12-07T10:34:17.517Z"
+  },
+  "token": {
+    "txHash": "0x44ba3ce43127972ab03daa9507947c7e14ea6ef92f043524395536a532e563d6",
+    "outPoint": {
+      "txHash": "0x44ba3ce43127972ab03daa9507947c7e14ea6ef92f043524395536a532e563d6",
+      "index": "0x0"
+    },
+    "codeHash": "0x54f68c08a051facc261167d0a45383cc5fa8b1ea7d1f9d9be5a7e623e27a1320",
+    "deployedAt": "2025-12-07T10:45:43.754Z"
+  }
+}

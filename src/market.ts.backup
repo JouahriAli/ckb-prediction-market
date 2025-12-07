@@ -1,0 +1,298 @@
+/**
+ * Market Creation and Management (CSMM + xUDT Design)
+ *
+ * This module handles creating new prediction markets on CKB with xUDT tokens.
+ *
+ * Transaction Flow for Creating a Market:
+ * ------------------------------------------
+ * Transaction 1: Create YES seal cell
+ *   Inputs: User's CKB cells
+ *   Outputs: Seal cell (regular lock, acts as one-time-use seal)
+ *
+ * Transaction 2: Create NO seal cell
+ *   Inputs: User's CKB cells
+ *   Outputs: Seal cell (regular lock, acts as one-time-use seal)
+ *
+ * Transaction 3: Mint tokens and create market
+ *   Inputs: YES seal, NO seal, User's CKB cells
+ *   Outputs:
+ *     - Market cell (escrow, contains MarketData)
+ *     - YES token cell (initial liquidity, held by market owner)
+ *     - NO token cell (initial liquidity, held by market owner)
+ *     - Change
+ *
+ * The market cell will have:
+ *   - Capacity: initialCapacity (escrow pool)
+ *   - Lock: User's address (owner can update/resolve)
+ *   - Type: None (Phase 1 - Phase 2 will add type script for validation)
+ *   - Data: Encoded MarketData (yesSupply, noSupply, type hashes, etc.)
+ */
+
+import { ccc } from "@ckb-ccc/core";
+import { MarketConfig, MarketData, TransactionResult, CONSTANTS } from "./types.js";
+import { encodeMarketData } from "./encoding.js";
+
+/**
+ * Create a seal cell for Single-Use Lock
+ *
+ * A seal cell is a regular cell that will be consumed once to create a Single-Use Lock.
+ * This lock will control token minting (can only mint once).
+ *
+ * @param signer - CCC signer
+ * @returns Transaction hash
+ */
+async function createSealCell(signer: ccc.Signer): Promise<string> {
+  const userLock = (await signer.getRecommendedAddressObj()).script;
+
+  const tx = ccc.Transaction.from({
+    outputs: [
+      {
+        lock: userLock,
+        capacity: CONSTANTS.MIN_CELL_CAPACITY,  // 61 CKB
+      },
+    ],
+    outputsData: ["0x"],  // Empty data
+  });
+
+  await tx.completeInputsByCapacity(signer);
+  await tx.completeFeeBy(signer, 1000);
+
+  const txHash = await signer.sendTransaction(tx);
+
+  // Mark cell as reserved so CCC doesn't try to use it for other transactions
+  await signer.client.cache.markUnusable({
+    txHash,
+    index: 0,
+  });
+
+  return txHash;
+}
+
+/**
+ * Create a new prediction market with xUDT tokens
+ *
+ * This function creates a market with YES and NO tokens using Single-Use Locks.
+ *
+ * @param signer - CCC signer (connected wallet/account)
+ * @param config - Market configuration (question, deadline, initial capacity)
+ * @returns Transaction hash and output index of created market cell
+ *
+ * Step-by-step explanation:
+ * 1. Create YES seal cell (for YES token minting)
+ * 2. Create NO seal cell (for NO token minting)
+ * 3. Wait for both transactions to commit
+ * 4. Create Single-Use Lock scripts from the seals
+ * 5. Create xUDT type scripts using the lock hashes
+ * 6. Build minting transaction that consumes both seals
+ * 7. Outputs: Market cell + YES tokens + NO tokens
+ */
+export async function createMarket(
+  signer: ccc.Signer,
+  config: MarketConfig
+): Promise<TransactionResult> {
+  console.log("\n=== Creating Prediction Market (xUDT + CSMM) ===");
+  console.log(`Question: ${config.question}`);
+  console.log(`Deadline: ${new Date(Number(config.deadline) * 1000).toISOString()}`);
+  console.log(`Initial Capacity: ${config.initialCapacity / CONSTANTS.CKB_SHANNON_RATIO} CKB`);
+  console.log(`Initial Token Supply: ${CONSTANTS.INITIAL_TOKEN_SUPPLY / CONSTANTS.CKB_SHANNON_RATIO} tokens (each side)\n`);
+
+  // Step 1: Create YES seal cell
+  console.log("Step 1/7: Creating YES seal cell...");
+  const yesSealTxHash = await createSealCell(signer);
+  console.log(`✅ YES seal created: ${yesSealTxHash}`);
+
+  // Step 2: Create NO seal cell
+  console.log("\nStep 2/7: Creating NO seal cell...");
+  const noSealTxHash = await createSealCell(signer);
+  console.log(`✅ NO seal created: ${noSealTxHash}`);
+
+  // Step 3: Wait for seal transactions to commit
+  console.log("\nStep 3/7: Waiting for seal cells to commit...");
+  await signer.client.waitTransaction(yesSealTxHash);
+  await signer.client.waitTransaction(noSealTxHash);
+  console.log("✅ Both seal cells committed");
+
+  // Step 4: Create Single-Use Lock scripts
+  console.log("\nStep 4/7: Creating Single-Use Lock scripts...");
+  const yesSealOutPoint = ccc.OutPoint.from({ txHash: yesSealTxHash, index: 0 });
+  const noSealOutPoint = ccc.OutPoint.from({ txHash: noSealTxHash, index: 0 });
+
+  const yesSealLock = await ccc.Script.fromKnownScript(
+    signer.client,
+    ccc.KnownScript.SingleUseLock,
+    yesSealOutPoint.toBytes()
+  );
+  const noSealLock = await ccc.Script.fromKnownScript(
+    signer.client,
+    ccc.KnownScript.SingleUseLock,
+    noSealOutPoint.toBytes()
+  );
+  console.log(`✅ YES Single-Use Lock hash: ${yesSealLock.hash()}`);
+  console.log(`✅ NO Single-Use Lock hash: ${noSealLock.hash()}`);
+
+  // Step 5: Create xUDT type scripts
+  console.log("\nStep 5/7: Creating xUDT type scripts...");
+  const yesTokenType = await ccc.Script.fromKnownScript(
+    signer.client,
+    ccc.KnownScript.XUdt,
+    yesSealLock.hash()  // Args = issuer's lock hash
+  );
+  const noTokenType = await ccc.Script.fromKnownScript(
+    signer.client,
+    ccc.KnownScript.XUdt,
+    noSealLock.hash()
+  );
+  console.log(`✅ YES token type hash: ${yesTokenType.hash()}`);
+  console.log(`✅ NO token type hash: ${noTokenType.hash()}`);
+
+  // Step 6: Build market data
+  console.log("\nStep 6/7: Building market data...");
+  const initialSupply = CONSTANTS.INITIAL_TOKEN_SUPPLY;
+
+  const marketData: MarketData = {
+    yesSupply: initialSupply,        // Initial YES tokens
+    noSupply: initialSupply,         // Initial NO tokens
+    totalBets: 0n,                   // No bets yet
+    resolved: false,                 // Not resolved
+    outcome: false,                  // No outcome yet
+    deadline: config.deadline,
+    yesTokenTypeHash: yesTokenType.hash(),
+    noTokenTypeHash: noTokenType.hash(),
+  };
+
+  const encodedData = encodeMarketData(marketData);
+  console.log(`✅ Market data encoded (${encodedData.length / 2 - 1} bytes)`);
+
+  // Step 7: Build minting transaction
+  console.log("\nStep 7/7: Building minting transaction...");
+  const userLock = (await signer.getRecommendedAddressObj()).script;
+
+  const tx = ccc.Transaction.from({
+    inputs: [
+      // Consume YES seal (enables YES token minting)
+      {
+        previousOutput: yesSealOutPoint,
+      },
+      // Consume NO seal (enables NO token minting)
+      {
+        previousOutput: noSealOutPoint,
+      },
+    ],
+    outputs: [
+      // Output 0: Market cell (escrow)
+      {
+        lock: userLock,
+        capacity: config.initialCapacity,
+      },
+      // Output 1: YES token cell (initial liquidity)
+      {
+        lock: userLock,
+        type: yesTokenType,
+        capacity: CONSTANTS.XUDT_CELL_CAPACITY,
+      },
+      // Output 2: NO token cell (initial liquidity)
+      {
+        lock: userLock,
+        type: noTokenType,
+        capacity: CONSTANTS.XUDT_CELL_CAPACITY,
+      },
+    ],
+    outputsData: [
+      encodedData,                                  // Market data
+      ccc.numLeToBytes(initialSupply, 16),          // YES tokens
+      ccc.numLeToBytes(initialSupply, 16),          // NO tokens
+    ],
+  });
+
+  // Add cell dependencies for Single-Use Lock and xUDT scripts
+  await tx.addCellDepsOfKnownScripts(
+    signer.client,
+    ccc.KnownScript.SingleUseLock,
+    ccc.KnownScript.XUdt
+  );
+
+  // Complete inputs (for capacity) and fee
+  await tx.completeInputsByCapacity(signer);
+  await tx.completeFeeBy(signer, 1000);
+
+  console.log(`\nTransaction summary:`);
+  console.log(`  - Inputs: ${tx.inputs.length} (2 seals + capacity cells)`);
+  console.log(`  - Outputs: ${tx.outputs.length} (market + 2 tokens + change)`);
+
+  // Send transaction
+  const txHash = await signer.sendTransaction(tx);
+  console.log(`\n✅ Market created!`);
+  console.log(`Transaction hash: ${txHash}`);
+  console.log(`Market cell: output index 0`);
+  console.log(`YES token cell: output index 1`);
+  console.log(`NO token cell: output index 2`);
+
+  // Wait for transaction to commit
+  await signer.client.waitTransaction(txHash);
+  console.log(`✅ Transaction committed!`);
+
+  return {
+    txHash,
+    outputIndex: 0,
+  };
+}
+
+/**
+ * Helper function to generate a market ID from transaction
+ *
+ * In CKB, we identify cells by their "OutPoint":
+ *   OutPoint = { txHash: string, index: number }
+ *
+ * For the market ID, we'll use a 32-byte identifier:
+ *   First 31 bytes: txHash (truncated)
+ *   Last byte: output index
+ *
+ * This links position cells to their market.
+ *
+ * @param txHash - Transaction hash that created the market
+ * @param outputIndex - Output index of the market cell (usually 0)
+ * @returns 32-byte market ID as hex string
+ */
+export function generateMarketId(txHash: string, outputIndex: number): string {
+  // Remove 0x prefix if present
+  const cleanHash = txHash.startsWith("0x") ? txHash.slice(2) : txHash;
+
+  // Take first 62 hex chars (31 bytes) of txHash
+  const hashPart = cleanHash.slice(0, 62);
+
+  // Convert output index to single byte (hex)
+  const indexByte = outputIndex.toString(16).padStart(2, "0");
+
+  // Combine: 31 bytes hash + 1 byte index = 32 bytes total
+  return "0x" + hashPart + indexByte;
+}
+
+/**
+ * Helper function to parse market ID back to OutPoint
+ *
+ * This reverses the generateMarketId function.
+ *
+ * @param marketId - 32-byte market ID
+ * @returns Object with txHash and index
+ */
+export function parseMarketId(marketId: string): { txHash: string; index: number } {
+  const cleanId = marketId.startsWith("0x") ? marketId.slice(2) : marketId;
+
+  if (cleanId.length !== 64) {
+    throw new Error(`Invalid market ID length: expected 64 hex chars, got ${cleanId.length}`);
+  }
+
+  // First 62 chars = txHash (31 bytes)
+  const hashPart = cleanId.slice(0, 62);
+
+  // Last 2 chars = index byte
+  const indexByte = cleanId.slice(62, 64);
+
+  // Reconstruct full txHash (pad to 64 chars with zeros)
+  const txHash = "0x" + hashPart + "00";
+
+  // Parse index
+  const index = parseInt(indexByte, 16);
+
+  return { txHash, index };
+}

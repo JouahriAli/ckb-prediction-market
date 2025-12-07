@@ -1,0 +1,17 @@
+[package]
+name = "market"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ckb-std = "1.0.1"
+
+[profile.release]
+overflow-checks = true
+opt-level = "z"
+lto = true
+panic = "abort"
+codegen-units = 1
+
+[profile.dev]
+panic = "abort"

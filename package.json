@@ -1,0 +1,26 @@
+{
+  "name": "prediction-market",
+  "version": "1.0.0",
+  "description": "CKB Prediction Market MVP",
+  "type": "module",
+  "scripts": {
+    "create": "tsx examples/01-create-market.ts",
+    "bet": "tsx examples/02-place-bet.ts",
+    "view": "tsx examples/03-view-market.ts",
+    "resolve": "tsx examples/04-resolve.ts",
+    "claim": "tsx examples/05-claim.ts"
+  },
+  "keywords": ["ckb", "prediction-market", "blockchain"],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.20.0",
+  "dependencies": {
+    "@ckb-ccc/core": "^1.12.2",
+    "dotenv": "^17.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}
