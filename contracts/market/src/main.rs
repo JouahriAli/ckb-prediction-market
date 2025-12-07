@@ -189,7 +189,7 @@ fn validate_transition(input_data: &MarketData, output_data: &MarketData) -> Res
     }
 
     // Validate market capacity increase matches supply increase
-    // This ensures proper collateralization: 1 token = 1 CKB backing
+    // This ensures proper collateralization: 1 token = 100 CKB backing
     let input_capacity = load_market_capacity(Source::Input)?;
     let output_capacity = load_market_capacity(Source::Output)?;
 
@@ -201,11 +201,11 @@ fn validate_transition(input_data: &MarketData, output_data: &MarketData) -> Res
     let capacity_increase = output_capacity - input_capacity;
 
     // Supply is stored as token count, capacity is in shannons
-    // 1 token = 1 CKB = 100_000_000 shannons
-    const SHANNONS_PER_CKB: u128 = 100_000_000;
+    // 1 token = 100 CKB = 10_000_000_000 shannons
+    const SHANNONS_PER_TOKEN: u128 = 10_000_000_000;
 
     let supply_increase_shannons = yes_increase
-        .checked_mul(SHANNONS_PER_CKB)
+        .checked_mul(SHANNONS_PER_TOKEN)
         .ok_or(Error::Encoding)?;
 
     let supply_increase_u64: u64 = supply_increase_shannons.try_into()
@@ -214,13 +214,13 @@ fn validate_transition(input_data: &MarketData, output_data: &MarketData) -> Res
     if capacity_increase != supply_increase_u64 {
         debug!("Capacity increase ({}) must equal supply increase in shannons ({})",
                capacity_increase, supply_increase_u64);
-        debug!("Token supply increased by {}, which is {} shannons",
+        debug!("Token supply increased by {}, which is {} shannons (100 CKB per token)",
                yes_increase, supply_increase_u64);
         return Err(Error::InsufficientCollateral);
     }
 
-    debug!("Collateral validation passed: +{} CKB capacity matches +{} tokens",
-           capacity_increase / SHANNONS_PER_CKB as u64, yes_increase);
+    debug!("Collateral validation passed: +{} CKB capacity matches +{} tokens at 100 CKB/token",
+           capacity_increase / 100_000_000, yes_increase);
 
     // Resolution status cannot change yet (we're only handling minting for now)
     if input_data.resolved != output_data.resolved {

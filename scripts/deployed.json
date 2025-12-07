@@ -2,33 +2,36 @@
   "network": "testnet",
   "deployedAt": "2025-12-07T10:27:00.000Z",
   "market": {
-    "txHash": "0x909becfd148b9b0ddabc98f244a98abcd2360fcf94107432068dca01a2e010e4",
+    "txHash": "0xe0e693b6772f74c47445badec6b02cb08d41ece914e870df83ddee4abe7b4038",
+    "codeHash": "0x379b48e0a56aaff1f5ce094e8a2d4261f2d56192ae7c04a9df45eecf64b4719f",
     "outPoint": {
-      "txHash": "0x909becfd148b9b0ddabc98f244a98abcd2360fcf94107432068dca01a2e010e4",
+      "txHash": "0xe0e693b6772f74c47445badec6b02cb08d41ece914e870df83ddee4abe7b4038",
       "index": "0x0"
     },
-    "note": "Market contract deployed successfully"
+    "upgradedAt": "2025-12-07T14:42:41.066Z",
+    "previousVersion": "0x909becfd148b9b0ddabc98f244a98abcd2360fcf94107432068dca01a2e010e4"
   },
   "marketCell": {
-    "txHash": "0x4f666a10114a564c25a0f09b7ea64f3787722f922403c8971ad079f666eb785b",
+    "txHash": "0x4bf6ba3f9e704e2175bef38e6b949dfeb7ef4d727e9636176b74d5ab515d3fbf",
     "outPoint": {
-      "txHash": "0x4f666a10114a564c25a0f09b7ea64f3787722f922403c8971ad079f666eb785b",
+      "txHash": "0x4bf6ba3f9e704e2175bef38e6b949dfeb7ef4d727e9636176b74d5ab515d3fbf",
       "index": "0x0"
     },
     "typeScript": {
-      "codeHash": "0x37402b2f7c5b30611d34bad3b76b9f3607aa297213525d998159a6f7c7fd9421",
+      "codeHash": "0x379b48e0a56aaff1f5ce094e8a2d4261f2d56192ae7c04a9df45eecf64b4719f",
       "hashType": "data2",
       "args": "0x"
     },
-    "createdAt": "2025-12-07T10:34:17.517Z"
+    "createdAt": "2025-12-07T14:44:51.314Z"
   },
   "token": {
-    "txHash": "0x44ba3ce43127972ab03daa9507947c7e14ea6ef92f043524395536a532e563d6",
+    "txHash": "0x4ebd40a6e21daca799e44d9e30c45eac8252ce10495d9429fa8186eed79f8dce",
+    "codeHash": "0x54f68c08a051facc261167d0a45383cc5fa8b1ea7d1f9d9be5a7e623e27a1320",
     "outPoint": {
-      "txHash": "0x44ba3ce43127972ab03daa9507947c7e14ea6ef92f043524395536a532e563d6",
+      "txHash": "0x4ebd40a6e21daca799e44d9e30c45eac8252ce10495d9429fa8186eed79f8dce",
       "index": "0x0"
     },
-    "codeHash": "0x54f68c08a051facc261167d0a45383cc5fa8b1ea7d1f9d9be5a7e623e27a1320",
-    "deployedAt": "2025-12-07T10:45:43.754Z"
+    "upgradedAt": "2025-12-07T14:42:41.066Z",
+    "previousVersion": "0x44ba3ce43127972ab03daa9507947c7e14ea6ef92f043524395536a532e563d6"
   }
 }

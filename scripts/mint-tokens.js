@@ -37,11 +37,13 @@ async function mintTokens() {
   const lock = (await signer.getAddressObjs())[0].script;
 
   // Amount to mint (in token units, not shannons)
+  // 1 token = 100 CKB, so minting 1 token requires 100 CKB collateral
   const mintAmount = BigInt(100);
-  const mintAmountCKB = mintAmount * BigInt(100_000_000); // Convert to shannons for capacity
+  const CKB_PER_TOKEN = BigInt(100);
+  const mintAmountCKB = mintAmount * CKB_PER_TOKEN * BigInt(100_000_000); // Convert to shannons
 
   console.log(`Minting: ${mintAmount} YES + ${mintAmount} NO tokens`);
-  console.log(`Collateral: ${Number(mintAmountCKB) / 100_000_000} CKB\n`);
+  console.log(`Collateral: ${Number(mintAmountCKB) / 100_000_000} CKB (${CKB_PER_TOKEN} CKB per token)\n`);
 
   // Load current market cell
   const marketOutPoint = new ccc.OutPoint(
