@@ -1,0 +1,58 @@
+{
+  "mock_info": {
+    "inputs": [
+      {
+        "input": {
+          "previous_output": {
+            "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "index": "0x0"
+          },
+          "since": "0x0"
+        },
+        "output": {
+          "capacity": "0x174876e800",
+          "lock": {
+            "code_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "hash_type": "data2",
+            "args": "0x"
+          },
+          "type": null
+        },
+        "data": "0x"
+      }
+    ],
+    "cell_deps": [],
+    "header_deps": []
+  },
+  "tx": {
+    "version": "0x0",
+    "cell_deps": [],
+    "header_deps": [],
+    "inputs": [
+      {
+        "previous_output": {
+          "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "index": "0x0"
+        },
+        "since": "0x0"
+      }
+    ],
+    "outputs": [
+      {
+        "capacity": "0x174876e800",
+        "lock": {
+          "code_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "hash_type": "type",
+          "args": "0x"
+        },
+        "type": null
+      }
+    ],
+    "outputs_data": [
+      "0x"
+    ],
+    "witnesses": [
+      "0x"
+    ]
+  }
+}

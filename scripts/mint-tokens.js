@@ -174,6 +174,16 @@ async function mintTokens() {
     )
   );
 
+  // Add cell dep for always-success lock (market cell uses this)
+  if (deployed.alwaysSuccess) {
+    tx.cellDeps.push(
+      new ccc.CellDep(
+        new ccc.OutPoint(deployed.alwaysSuccess.txHash, 0),
+        "code"
+      )
+    );
+  }
+
   // Complete transaction
   await tx.addCellDepsOfKnownScripts(client, ccc.KnownScript.Secp256k1Blake160);
   await tx.completeInputsByCapacity(signer);

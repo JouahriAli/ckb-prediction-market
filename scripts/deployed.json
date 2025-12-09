@@ -2,36 +2,45 @@
   "network": "testnet",
   "deployedAt": "2025-12-07T10:27:00.000Z",
   "market": {
-    "txHash": "0xe0e693b6772f74c47445badec6b02cb08d41ece914e870df83ddee4abe7b4038",
-    "codeHash": "0x379b48e0a56aaff1f5ce094e8a2d4261f2d56192ae7c04a9df45eecf64b4719f",
+    "txHash": "0x01b0adb188e00207dff84543807f59985976a017d07585f0a385b92f190dcfd6",
+    "codeHash": "0x9c148507b50f31775f6df9f62f9c933d1e068fc5de9a2d7221f1c23501d55069",
     "outPoint": {
-      "txHash": "0xe0e693b6772f74c47445badec6b02cb08d41ece914e870df83ddee4abe7b4038",
+      "txHash": "0x01b0adb188e00207dff84543807f59985976a017d07585f0a385b92f190dcfd6",
       "index": "0x0"
     },
-    "upgradedAt": "2025-12-07T14:42:41.066Z",
-    "previousVersion": "0x909becfd148b9b0ddabc98f244a98abcd2360fcf94107432068dca01a2e010e4"
+    "redeployedAt": "2025-12-08T09:57:50.256Z",
+    "previousVersion": "0x4ebd40a6e21daca799e44d9e30c45eac8252ce10495d9429fa8186eed79f8dce"
   },
   "marketCell": {
-    "txHash": "0x4bf6ba3f9e704e2175bef38e6b949dfeb7ef4d727e9636176b74d5ab515d3fbf",
+    "txHash": "0xbf8ca0490108cb10209a38e16b84435b498367e5f7920335285064709e9569df",
     "outPoint": {
-      "txHash": "0x4bf6ba3f9e704e2175bef38e6b949dfeb7ef4d727e9636176b74d5ab515d3fbf",
+      "txHash": "0xbf8ca0490108cb10209a38e16b84435b498367e5f7920335285064709e9569df",
       "index": "0x0"
     },
     "typeScript": {
-      "codeHash": "0x379b48e0a56aaff1f5ce094e8a2d4261f2d56192ae7c04a9df45eecf64b4719f",
+      "codeHash": "0x9c148507b50f31775f6df9f62f9c933d1e068fc5de9a2d7221f1c23501d55069",
       "hashType": "data2",
       "args": "0x"
     },
-    "createdAt": "2025-12-07T14:44:51.314Z"
+    "createdAt": "2025-12-08T09:59:02.489Z"
   },
   "token": {
-    "txHash": "0x4ebd40a6e21daca799e44d9e30c45eac8252ce10495d9429fa8186eed79f8dce",
+    "txHash": "0xdbe75d9689526fe7eb79b0aed16f2dc6037d99f4ab74311630d3a55ed3da6909",
     "codeHash": "0x54f68c08a051facc261167d0a45383cc5fa8b1ea7d1f9d9be5a7e623e27a1320",
     "outPoint": {
-      "txHash": "0x4ebd40a6e21daca799e44d9e30c45eac8252ce10495d9429fa8186eed79f8dce",
+      "txHash": "0xdbe75d9689526fe7eb79b0aed16f2dc6037d99f4ab74311630d3a55ed3da6909",
       "index": "0x0"
     },
-    "upgradedAt": "2025-12-07T14:42:41.066Z",
-    "previousVersion": "0x44ba3ce43127972ab03daa9507947c7e14ea6ef92f043524395536a532e563d6"
+    "redeployedAt": "2025-12-08T10:12:24.793Z",
+    "previousVersion": "0xa1553aad7c9e70150e363af658a1e27b2e77cda97091be509592fa06776ac4cb"
+  },
+  "alwaysSuccess": {
+    "txHash": "0xc64e8728778b57e7376d9ede254f2fe48e3e943cc2b047a47f6278a0b6b6f739",
+    "outPoint": {
+      "txHash": "0xc64e8728778b57e7376d9ede254f2fe48e3e943cc2b047a47f6278a0b6b6f739",
+      "index": "0x0"
+    },
+    "dataHash": "0x21854a7b67a2c4a71a8558c6d4023cf787e71db49d09cb4aa8748dbf6a8ef6ec",
+    "deployedAt": "2025-12-08T09:31:04.743Z"
   }
 }

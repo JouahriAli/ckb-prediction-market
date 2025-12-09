@@ -24,6 +24,12 @@ async function createMarket() {
     process.exit(1);
   }
 
+  if (!deployed.alwaysSuccess) {
+    console.error("❌ Always-success lock not deployed yet");
+    console.error("Run: node scripts/deploy-always-success.js");
+    process.exit(1);
+  }
+
   const client = new ccc.ClientPublicTestnet();
   const signer = new ccc.SignerCkbPrivateKey(client, privateKey);
 
@@ -33,8 +39,32 @@ async function createMarket() {
   console.log(`Address: ${address}`);
   console.log(`Balance: ${Number(balance) / 100_000_000} CKB\n`);
 
-  // Get lock script
-  const lock = (await signer.getAddressObjs())[0].script;
+  // Load always-success lock binary and create lock script
+  const alwaysSuccessBinary = fs.readFileSync(
+    path.join(__dirname, "../contracts/always-success/build/always-success")
+  );
+  const alwaysSuccessDataHash = ccc.hashCkb(alwaysSuccessBinary);
+
+  // Convert data hash to hex string
+  let alwaysSuccessCodeHash;
+  if (typeof alwaysSuccessDataHash === "string") {
+    alwaysSuccessCodeHash = alwaysSuccessDataHash.startsWith("0x")
+      ? alwaysSuccessDataHash
+      : "0x" + alwaysSuccessDataHash;
+  } else {
+    alwaysSuccessCodeHash = "0x" + Array.from(alwaysSuccessDataHash)
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  // Create always-success lock script (allows anyone to spend)
+  const lock = new ccc.Script(
+    alwaysSuccessCodeHash,
+    "data2",
+    "0x"
+  );
+
+  console.log(`Using always-success lock: ${alwaysSuccessCodeHash}`);
+  console.log("⚠️  Anyone can spend this cell!\n");
 
   // Get deployed market contract data hash
   const marketTxHash = deployed.market.txHash;
@@ -94,7 +124,12 @@ async function createMarket() {
   console.log(`Market data: ${marketData}`);
 
   // Calculate capacity needed (8 + lock + type + data)
-  const capacityNeeded = BigInt(8 + 61 + 53 + 34) * BigInt(100_000_000); // ~156 CKB
+  // Lock script: 32 (code_hash) + 1 (hash_type) + 4 (args length prefix) = 37 bytes (empty args)
+  // Type script: 32 (code_hash) + 1 (hash_type) + 4 (args length prefix) = 37 bytes (empty args)
+  // Data: 34 bytes
+  // Total occupied bytes: 8 (capacity) + 37 + 37 + 34 = 116 bytes
+  // Minimum capacity: 116 CKB
+  const capacityNeeded = BigInt(116) * BigInt(100_000_000);
   console.log(`Capacity needed: ${Number(capacityNeeded) / 100_000_000} CKB\n`);
 
   // Build transaction
@@ -110,6 +145,13 @@ async function createMarket() {
   // Add cell dep for the market contract
   tx.cellDeps.push(new ccc.CellDep(
     new ccc.OutPoint(marketTxHash, 0),
+    "code"
+  ));
+
+  // Add cell dep for the always-success lock contract
+  const alwaysSuccessTxHash = deployed.alwaysSuccess.txHash;
+  tx.cellDeps.push(new ccc.CellDep(
+    new ccc.OutPoint(alwaysSuccessTxHash, 0),
     "code"
   ));
 

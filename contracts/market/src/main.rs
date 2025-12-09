@@ -11,7 +11,8 @@ use ckb_std::{
     ckb_types::prelude::*,
     debug,
     high_level::{
-        load_cell_capacity, load_cell_data, load_cell_type_hash, load_script, QueryIter,
+        load_cell_capacity, load_cell_data, load_cell_lock, load_cell_type_hash, load_script,
+        load_witness_args, QueryIter,
     },
 };
 
@@ -28,6 +29,7 @@ enum Error {
     SupplyDecrease = 12,
     UnequalSupplyIncrease = 13,
     InsufficientCollateral = 14,
+    LockScriptChanged = 15,
 }
 
 impl From<ckb_std::error::SysError> for Error {
@@ -141,6 +143,41 @@ fn load_market_capacity(source: Source) -> Result<u64, Error> {
     Err(Error::ItemMissing)
 }
 
+/// Load market cell lock script from a source
+fn load_market_lock(source: Source) -> Result<ckb_std::ckb_types::packed::Script, Error> {
+    let script = load_script()?;
+    let script_hash = script.calc_script_hash();
+
+    for (i, cell_type_hash) in QueryIter::new(load_cell_type_hash, source).enumerate() {
+        if let Some(type_hash) = cell_type_hash {
+            if type_hash.as_slice() == script_hash.as_slice() {
+                return Ok(load_cell_lock(i, source)?);
+            }
+        }
+    }
+
+    Err(Error::ItemMissing)
+}
+
+/// Check if transaction has a witness (signature provided for resolution)
+/// Returns true if witness with lock field exists, false otherwise
+fn has_witness() -> bool {
+    // Try to load witness args from first input
+    match load_witness_args(0, Source::GroupInput) {
+        Ok(witness_args) => {
+            // Check if lock field exists and is not empty
+            match witness_args.lock().to_opt() {
+                Some(lock) => {
+                    let lock_bytes = lock.raw_data();
+                    !lock_bytes.is_empty()
+                }
+                None => false,
+            }
+        }
+        Err(_) => false,
+    }
+}
+
 /// Validate market creation (no input market cell)
 fn validate_creation(output_data: &MarketData) -> Result<(), Error> {
     debug!("Validating market creation");
@@ -161,74 +198,168 @@ fn validate_creation(output_data: &MarketData) -> Result<(), Error> {
     Ok(())
 }
 
+/// Validate lock script is preserved (prevents market hijacking)
+fn validate_lock_preserved() -> Result<(), Error> {
+    debug!("Validating lock script preservation");
+
+    let input_lock = load_market_lock(Source::Input)?;
+    let output_lock = load_market_lock(Source::Output)?;
+
+    // Compare lock scripts byte-by-byte
+    if input_lock.as_slice() != output_lock.as_slice() {
+        debug!("Lock script changed - market hijacking attempt!");
+        return Err(Error::LockScriptChanged);
+    }
+
+    debug!("Lock script preserved");
+    Ok(())
+}
+
 /// Validate market state transition (input -> output)
 fn validate_transition(input_data: &MarketData, output_data: &MarketData) -> Result<(), Error> {
     debug!("Validating market transition");
     debug!("Input: yes={}, no={}, resolved={}", input_data.yes_supply, input_data.no_supply, input_data.resolved);
     debug!("Output: yes={}, no={}, resolved={}", output_data.yes_supply, output_data.no_supply, output_data.resolved);
 
-    // For now, we only support minting (not resolution)
-    // Supplies can only increase or stay the same
-    if output_data.yes_supply < input_data.yes_supply {
-        debug!("YES supply cannot decrease");
-        return Err(Error::SupplyDecrease);
-    }
+    // CRITICAL: Ensure lock script doesn't change (prevent hijacking)
+    validate_lock_preserved()?;
 
-    if output_data.no_supply < input_data.no_supply {
-        debug!("NO supply cannot decrease");
-        return Err(Error::SupplyDecrease);
-    }
-
-    // If there's a supply change, it must be equal for both YES and NO
-    let yes_increase = output_data.yes_supply - input_data.yes_supply;
-    let no_increase = output_data.no_supply - input_data.no_supply;
-
-    if yes_increase != no_increase {
-        debug!("Unequal supply increase: YES +{}, NO +{}", yes_increase, no_increase);
-        return Err(Error::UnequalSupplyIncrease);
-    }
-
-    // Validate market capacity increase matches supply increase
-    // This ensures proper collateralization: 1 token = 100 CKB backing
+    // Load capacities to determine operation type
     let input_capacity = load_market_capacity(Source::Input)?;
     let output_capacity = load_market_capacity(Source::Output)?;
-
-    if output_capacity < input_capacity {
-        debug!("Market capacity cannot decrease");
-        return Err(Error::InsufficientCollateral);
-    }
-
-    let capacity_increase = output_capacity - input_capacity;
 
     // Supply is stored as token count, capacity is in shannons
     // 1 token = 100 CKB = 10_000_000_000 shannons
     const SHANNONS_PER_TOKEN: u128 = 10_000_000_000;
 
-    let supply_increase_shannons = yes_increase
-        .checked_mul(SHANNONS_PER_TOKEN)
-        .ok_or(Error::Encoding)?;
+    if output_capacity < input_capacity {
+        // BURNING: Market capacity decreased
+        debug!("Burning operation detected: capacity {} -> {}", input_capacity, output_capacity);
 
-    let supply_increase_u64: u64 = supply_increase_shannons.try_into()
-        .map_err(|_| Error::Encoding)?;
+        // Validate supplies decreased
+        if output_data.yes_supply >= input_data.yes_supply {
+            debug!("YES supply must decrease during burning");
+            return Err(Error::SupplyDecrease);
+        }
 
-    if capacity_increase != supply_increase_u64 {
-        debug!("Capacity increase ({}) must equal supply increase in shannons ({})",
-               capacity_increase, supply_increase_u64);
-        debug!("Token supply increased by {}, which is {} shannons (100 CKB per token)",
-               yes_increase, supply_increase_u64);
-        return Err(Error::InsufficientCollateral);
+        if output_data.no_supply >= input_data.no_supply {
+            debug!("NO supply must decrease during burning");
+            return Err(Error::SupplyDecrease);
+        }
+
+        // Calculate decreases
+        let yes_decrease = input_data.yes_supply - output_data.yes_supply;
+        let no_decrease = input_data.no_supply - output_data.no_supply;
+        let capacity_decrease = input_capacity - output_capacity;
+
+        // Validate equal YES/NO burning
+        if yes_decrease != no_decrease {
+            debug!("Unequal burning: YES -{}, NO -{}", yes_decrease, no_decrease);
+            return Err(Error::UnequalSupplyIncrease);
+        }
+
+        // Validate capacity decrease matches supply decrease
+        // 100 CKB = 1 YES + 1 NO (complete set)
+        // So burning N YES + N NO should return N × 100 CKB
+        let expected_capacity_decrease = yes_decrease
+            .checked_mul(SHANNONS_PER_TOKEN)
+            .ok_or(Error::Encoding)?;
+
+        let expected_capacity_u64: u64 = expected_capacity_decrease.try_into()
+            .map_err(|_| Error::Encoding)?;
+
+        if capacity_decrease != expected_capacity_u64 {
+            debug!("Capacity decrease ({}) must equal burned complete sets ({}) at 100 CKB per set",
+                   capacity_decrease, expected_capacity_u64);
+            debug!("Burned {} YES + {} NO complete sets",
+                   yes_decrease, no_decrease);
+            return Err(Error::InsufficientCollateral);
+        }
+
+        debug!("Burning validation passed: -{} CKB capacity for {} complete sets",
+               capacity_decrease / 100_000_000, yes_decrease);
+
+    } else if output_capacity > input_capacity {
+        // MINTING: Market capacity increased
+        debug!("Minting operation detected: capacity {} -> {}", input_capacity, output_capacity);
+
+        // Validate supplies increased
+        if output_data.yes_supply < input_data.yes_supply {
+            debug!("YES supply cannot decrease during minting");
+            return Err(Error::SupplyDecrease);
+        }
+
+        if output_data.no_supply < input_data.no_supply {
+            debug!("NO supply cannot decrease during minting");
+            return Err(Error::SupplyDecrease);
+        }
+
+        // Calculate increases
+        let yes_increase = output_data.yes_supply - input_data.yes_supply;
+        let no_increase = output_data.no_supply - input_data.no_supply;
+        let capacity_increase = output_capacity - input_capacity;
+
+        // Validate equal YES/NO minting
+        if yes_increase != no_increase {
+            debug!("Unequal minting: YES +{}, NO +{}", yes_increase, no_increase);
+            return Err(Error::UnequalSupplyIncrease);
+        }
+
+        // Validate capacity increase matches supply increase
+        let supply_increase_shannons = yes_increase
+            .checked_mul(SHANNONS_PER_TOKEN)
+            .ok_or(Error::Encoding)?;
+
+        let supply_increase_u64: u64 = supply_increase_shannons.try_into()
+            .map_err(|_| Error::Encoding)?;
+
+        if capacity_increase != supply_increase_u64 {
+            debug!("Capacity increase ({}) must equal supply increase in shannons ({})",
+                   capacity_increase, supply_increase_u64);
+            debug!("Token supply increased by {}, which is {} shannons (100 CKB per token)",
+                   yes_increase, supply_increase_u64);
+            return Err(Error::InsufficientCollateral);
+        }
+
+        debug!("Minting validation passed: +{} CKB capacity matches +{} tokens at 100 CKB/token",
+               capacity_increase / 100_000_000, yes_increase);
+    } else {
+        // NO OPERATION: Capacity unchanged, supplies must also be unchanged
+        debug!("No capacity change, validating supplies unchanged");
+
+        if output_data.yes_supply != input_data.yes_supply {
+            debug!("YES supply changed without capacity change");
+            return Err(Error::InsufficientCollateral);
+        }
+
+        if output_data.no_supply != input_data.no_supply {
+            debug!("NO supply changed without capacity change");
+            return Err(Error::InsufficientCollateral);
+        }
     }
 
-    debug!("Collateral validation passed: +{} CKB capacity matches +{} tokens at 100 CKB/token",
-           capacity_increase / 100_000_000, yes_increase);
+    // Check if this is a resolution transaction (has witness/signature)
+    let has_sig = has_witness();
+    debug!("Transaction has witness/signature: {}", has_sig);
 
-    // Resolution status cannot change yet (we're only handling minting for now)
-    if input_data.resolved != output_data.resolved {
-        debug!("Resolution status cannot change (not implemented yet)");
+    if has_sig {
+        // Resolution transaction - will implement later
+        debug!("Resolution transaction detected - not yet implemented");
         return Err(Error::InvalidMarketData);
+    } else {
+        // Minting/burning transaction - outcome and resolved status must not change
+        if input_data.resolved != output_data.resolved {
+            debug!("Resolved status cannot change during minting/burning");
+            return Err(Error::InvalidMarketData);
+        }
+
+        if input_data.outcome != output_data.outcome {
+            debug!("Outcome cannot change during minting/burning");
+            return Err(Error::InvalidMarketData);
+        }
     }
 
-    debug!("Market transition valid: +{} to both YES and NO supply", yes_increase);
+    debug!("Market transition validation complete");
     Ok(())
 }
 

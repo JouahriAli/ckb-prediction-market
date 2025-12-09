@@ -15,21 +15,55 @@ This is a CKB blockchain-based prediction market using the **Complete Set Model*
 ## Deployment Information
 
 **Network:** CKB Testnet (Pudge)
+**Deployed:** December 8, 2025
 
-**Deployed Contracts:**
-- Market Contract: `0x909becfd148b9b0ddabc98f244a98abcd2360fcf94107432068dca01a2e010e4`
-- Market Code Hash: `0x37402b2f7c5b30611d34bad3b76b9f3607aa297213525d998159a6f7c7fd9421`
-- Token Contract: `0x44ba3ce43127972ab03daa9507947c7e14ea6ef92f043524395536a532e563d6`
-- Token Code Hash: `0x54f68c08a051facc261167d0a45383cc5fa8b1ea7d1f9d9be5a7e623e27a1320`
+### Current Deployment (v2 - With Always-Success Lock)
+
+**Deployment Date:** December 8, 2025
+
+**Contracts:**
+- **Always-Success Lock:** `0xc64e8728778b57e7376d9ede254f2fe48e3e943cc2b047a47f6278a0b6b6f739:0`
+  - Code Hash (data2): `0x21854a7b67a2c4a71a8558c6d4023cf787e71db49d09cb4aa8748dbf6a8ef6ec`
+  - Size: 2,456 bytes
+  - Purpose: Allows anyone to spend/update market cell
+  - [View on Explorer](https://pudge.explorer.nervos.org/transaction/0xc64e8728778b57e7376d9ede254f2fe48e3e943cc2b047a47f6278a0b6b6f739)
+
+- **Market Contract:** `0x01b0adb188e00207dff84543807f59985976a017d07585f0a385b92f190dcfd6:0`
+  - Code Hash (data2): `0x9c148507b50f31775f6df9f62f9c933d1e068fc5de9a2d7221f1c23501d55069`
+  - Size: 202,296 bytes
+  - Purpose: Validates collateral ratio and supply tracking
+  - [View on Explorer](https://pudge.explorer.nervos.org/transaction/0x01b0adb188e00207dff84543807f59985976a017d07585f0a385b92f190dcfd6)
+
+- **Token Contract:** `0xdbe75d9689526fe7eb79b0aed16f2dc6037d99f4ab74311630d3a55ed3da6909:0`
+  - Code Hash (data2): `0x54f68c08a051facc261167d0a45383cc5fa8b1ea7d1f9d9be5a7e623e27a1320`
+  - Size: 208,997 bytes
+  - Purpose: Validates YES/NO token minting/burning and market updates
+  - [View on Explorer](https://pudge.explorer.nervos.org/transaction/0xdbe75d9689526fe7eb79b0aed16f2dc6037d99f4ab74311630d3a55ed3da6909)
 
 **Market Cell:**
-- Transaction: `0x4f666a10114a564c25a0f09b7ea64f3787722f922403c8971ad079f666eb785b`
-- Type Script Hash: `0xa9e40b899b3d3e902e0b3e804d1b9a0a2410741dfd41959db5f741a10a315b7d`
+- **Creation TX:** `0xbf8ca0490108cb10209a38e16b84435b498367e5f7920335285064709e9569df`
+  - [View on Explorer](https://pudge.explorer.nervos.org/transaction/0xbf8ca0490108cb10209a38e16b84435b498367e5f7920335285064709e9569df)
+- **OutPoint:** `0xbf8ca0490108cb10209a38e16b84435b498367e5f7920335285064709e9569df:0`
+- **Lock:** Always-success (anyone can spend!)
+- **Type:** Market contract validation
+- **Initial Capacity:** 116 CKB
+- **Initial Supply:** 0 YES + 0 NO tokens
 
 **First Minting Transaction:**
-- TX: `0x6d378b2f41aa5cb7c64f63ad89b200a67c0de8fe200fa39025c1c15f2c9f5736`
-- Minted: 100 YES + 100 NO tokens
-- Collateral: 100 CKB
+- **TX Hash:** `0xd68c2b321e631392039d43e99bf559b53ee47475f182e14733de1e08cd11300c`
+  - [View on Explorer](https://pudge.explorer.nervos.org/transaction/0xd68c2b321e631392039d43e99bf559b53ee47475f182e14733de1e08cd11300c)
+- **Minted:** 100 YES + 100 NO tokens
+- **Collateral:** 10,000 CKB (100 CKB per token)
+- **Market Capacity:** 116 → 10,116 CKB
+- **Status:** Successfully confirmed on testnet
+
+### Key Feature: Permissionless Minting/Burning
+
+⚠️ **Important:** The market cell uses an always-success lock script, meaning:
+- Anyone can mint tokens by adding CKB collateral
+- Anyone can burn tokens to retrieve CKB
+- No private key required to interact with the market
+- The market type script enforces all validation rules
 
 ---
 
