@@ -1,9 +1,2 @@
-# Generated transaction files
-*.json
-
-# Private keys
-privkey.txt
-*.key
-
-# Generated test artifacts
-*.cjs
+target/
+Cargo.lock

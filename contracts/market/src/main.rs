@@ -215,6 +215,56 @@ fn validate_lock_preserved() -> Result<(), Error> {
     Ok(())
 }
 
+/// Validate claim transaction (winning tokens → CKB after resolution)
+fn validate_claim(input_data: &MarketData, output_data: &MarketData, input_capacity: u64, output_capacity: u64) -> Result<(), Error> {
+    debug!("Validating claim transaction");
+
+    const SHANNONS_PER_TOKEN: u128 = 10_000_000_000; // 100 CKB per token
+
+    // Determine which token won based on outcome
+    let (winning_supply_in, winning_supply_out, losing_supply_in, losing_supply_out) = if input_data.outcome {
+        // YES won (outcome = true)
+        (input_data.yes_supply, output_data.yes_supply, input_data.no_supply, output_data.no_supply)
+    } else {
+        // NO won (outcome = false)
+        (input_data.no_supply, output_data.no_supply, input_data.yes_supply, output_data.yes_supply)
+    };
+
+    // Losing tokens have no value and cannot be claimed
+    if losing_supply_out != losing_supply_in {
+        debug!("Losing tokens cannot be claimed or changed");
+        return Err(Error::InvalidMarketData);
+    }
+
+    // Winning token supply must decrease (being claimed)
+    if winning_supply_out >= winning_supply_in {
+        debug!("Winning token supply must decrease during claim");
+        return Err(Error::SupplyDecrease);
+    }
+
+    // Calculate tokens being claimed
+    let tokens_claimed = winning_supply_in - winning_supply_out;
+    let capacity_decrease = input_capacity - output_capacity;
+
+    // Validate 1:100 ratio (1 winning token = 100 CKB)
+    let expected_capacity_decrease = tokens_claimed
+        .checked_mul(SHANNONS_PER_TOKEN)
+        .ok_or(Error::Encoding)?;
+
+    let expected_capacity_u64: u64 = expected_capacity_decrease.try_into()
+        .map_err(|_| Error::Encoding)?;
+
+    if capacity_decrease != expected_capacity_u64 {
+        debug!("Capacity decrease ({}) must equal tokens claimed ({}) at 100 CKB per token",
+               capacity_decrease, expected_capacity_u64);
+        return Err(Error::InsufficientCollateral);
+    }
+
+    debug!("Claim validation passed: {} winning tokens claimed for {} CKB",
+           tokens_claimed, capacity_decrease / 100_000_000);
+    Ok(())
+}
+
 /// Validate market state transition (input -> output)
 fn validate_transition(input_data: &MarketData, output_data: &MarketData) -> Result<(), Error> {
     debug!("Validating market transition");
@@ -232,9 +282,44 @@ fn validate_transition(input_data: &MarketData, output_data: &MarketData) -> Res
     // 1 token = 100 CKB = 10_000_000_000 shannons
     const SHANNONS_PER_TOKEN: u128 = 10_000_000_000;
 
-    if output_capacity < input_capacity {
-        // BURNING: Market capacity decreased
-        debug!("Burning operation detected: capacity {} -> {}", input_capacity, output_capacity);
+    // Check if market is resolved - this determines how we validate
+    if input_data.resolved {
+        // RESOLVED MARKET: Only allow claims (winning tokens → CKB)
+        debug!("Market is resolved with outcome: {}", if input_data.outcome { "YES" } else { "NO" });
+
+        if output_capacity < input_capacity {
+            // CLAIM: User is burning winning tokens to withdraw CKB
+            validate_claim(input_data, output_data, input_capacity, output_capacity)?;
+        } else if output_capacity == input_capacity {
+            // NO OPERATION: Supplies must not change
+            if output_data.yes_supply != input_data.yes_supply || output_data.no_supply != input_data.no_supply {
+                debug!("Supplies cannot change on resolved market without capacity change");
+                return Err(Error::InvalidMarketData);
+            }
+        } else {
+            // Cannot add capacity to resolved market
+            debug!("Cannot add capacity to resolved market");
+            return Err(Error::InvalidMarketData);
+        }
+
+        // Market must stay resolved
+        if !output_data.resolved {
+            debug!("Cannot unresolve market");
+            return Err(Error::InvalidMarketData);
+        }
+
+        // Outcome cannot change
+        if output_data.outcome != input_data.outcome {
+            debug!("Outcome cannot change after resolution");
+            return Err(Error::InvalidMarketData);
+        }
+
+    } else {
+        // UNRESOLVED MARKET: Allow minting and burning of complete sets
+
+        if output_capacity < input_capacity {
+            // BURNING: Market capacity decreased
+            debug!("Burning operation detected: capacity {} -> {}", input_capacity, output_capacity);
 
         // Validate supplies decreased
         if output_data.yes_supply >= input_data.yes_supply {
@@ -298,7 +383,7 @@ fn validate_transition(input_data: &MarketData, output_data: &MarketData) -> Res
         let yes_increase = output_data.yes_supply - input_data.yes_supply;
         let no_increase = output_data.no_supply - input_data.no_supply;
         let capacity_increase = output_capacity - input_capacity;
-
+        
         // Validate equal YES/NO minting
         if yes_increase != no_increase {
             debug!("Unequal minting: YES +{}, NO +{}", yes_increase, no_increase);
@@ -323,39 +408,45 @@ fn validate_transition(input_data: &MarketData, output_data: &MarketData) -> Res
 
         debug!("Minting validation passed: +{} CKB capacity matches +{} tokens at 100 CKB/token",
                capacity_increase / 100_000_000, yes_increase);
-    } else {
-        // NO OPERATION: Capacity unchanged, supplies must also be unchanged
-        debug!("No capacity change, validating supplies unchanged");
+        } else {
+            // NO OPERATION: Capacity unchanged, supplies must also be unchanged
+            debug!("No capacity change, validating supplies unchanged");
 
-        if output_data.yes_supply != input_data.yes_supply {
-            debug!("YES supply changed without capacity change");
-            return Err(Error::InsufficientCollateral);
+            if output_data.yes_supply != input_data.yes_supply {
+                debug!("YES supply changed without capacity change");
+                return Err(Error::InsufficientCollateral);
+            }
+
+            if output_data.no_supply != input_data.no_supply {
+                debug!("NO supply changed without capacity change");
+                return Err(Error::InsufficientCollateral);
+            }
         }
 
-        if output_data.no_supply != input_data.no_supply {
-            debug!("NO supply changed without capacity change");
-            return Err(Error::InsufficientCollateral);
-        }
-    }
+        // For unresolved markets, check if this is a resolution transaction
+        if output_data.resolved {
+            // RESOLUTION TRANSACTION: resolved field changed from false to true
+            debug!("Resolution transaction detected");
 
-    // Check if this is a resolution transaction (has witness/signature)
-    let has_sig = has_witness();
-    debug!("Transaction has witness/signature: {}", has_sig);
+            // Supply must not change during resolution
+            if input_data.yes_supply != output_data.yes_supply {
+                debug!("YES supply cannot change during resolution");
+                return Err(Error::InvalidMarketData);
+            }
 
-    if has_sig {
-        // Resolution transaction - will implement later
-        debug!("Resolution transaction detected - not yet implemented");
-        return Err(Error::InvalidMarketData);
-    } else {
-        // Minting/burning transaction - outcome and resolved status must not change
-        if input_data.resolved != output_data.resolved {
-            debug!("Resolved status cannot change during minting/burning");
-            return Err(Error::InvalidMarketData);
-        }
+            if input_data.no_supply != output_data.no_supply {
+                debug!("NO supply cannot change during resolution");
+                return Err(Error::InvalidMarketData);
+            }
 
-        if input_data.outcome != output_data.outcome {
-            debug!("Outcome cannot change during minting/burning");
-            return Err(Error::InvalidMarketData);
+            debug!("Resolution validation passed");
+        } else {
+            // MINTING/BURNING TRANSACTION
+            // Outcome must not change when market is unresolved
+            if output_data.outcome != input_data.outcome {
+                debug!("Outcome cannot change during minting/burning");
+                return Err(Error::InvalidMarketData);
+            }
         }
     }
 
