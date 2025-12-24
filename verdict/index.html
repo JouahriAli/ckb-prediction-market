@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verdict - Prediction Markets on CKB</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <div class="logo-icon">⚖️</div>
+                    <span>Verdict</span>
+                </div>
+                <nav class="nav-links">
+                    <a href="#markets" class="nav-link active">Markets</a>
+                    <a href="#how-it-works" class="nav-link">How it Works</a>
+                    <a href="#roadmap" class="nav-link">Roadmap</a>
+                    <a href="admin.html" class="nav-link">Admin</a>
+                </nav>
+                <div class="wallet-section" id="wallet-section">
+                    <div class="wallet-info" id="wallet-info" style="display: none;">
+                        <div class="wallet-address" id="wallet-address"></div>
+                        <div class="wallet-balance"><span id="wallet-balance">0</span> CKB</div>
+                    </div>
+                    <button class="btn btn-primary" id="btn-connect" onclick="app.connectWallet()">
+                        Connect Wallet
+                    </button>
+                    <button class="btn btn-secondary" id="btn-disconnect" onclick="app.disconnectWallet()" style="display: none;">
+                        Disconnect
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <!-- Hero Section -->
+        <section class="hero">
+            <div class="container">
+                <span class="hero-badge">Testnet MVP</span>
+                <h1>Prediction Markets on CKB</h1>
+                <p class="hero-subtitle">
+                    Trade on the outcomes of real-world events with fully collateralized YES/NO tokens, powered by Nervos CKB.
+                </p>
+                <div class="hero-buttons">
+                    <a href="#markets" class="btn btn-primary btn-lg">Explore Markets</a>
+                    <a href="#how-it-works" class="btn btn-secondary btn-lg">Learn More</a>
+                </div>
+            </div>
+        </section>
+
+        <!-- How it Works -->
+        <section class="how-it-works" id="how-it-works">
+            <div class="container">
+                <h2 class="section-title">How it Works</h2>
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <h3>Mint Tokens</h3>
+                        <p>Deposit CKB to mint equal amounts of YES and NO tokens. Each pair is backed by 100 CKB collateral.</p>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <h3>Trade</h3>
+                        <p>Buy tokens you believe in, sell those you don't. Price reflects the crowd's probability estimate.</p>
+                        <span class="coming-soon">Coming Soon</span>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <h3>Claim Winnings</h3>
+                        <p>After resolution, winning tokens are redeemable for 100 CKB each. Losers expire worthless.</p>
+                    </div>
+                </div>
+
+                <!-- Developer Details -->
+                <div class="dev-details text-center mt-4">
+                    <span class="dev-toggle" onclick="toggleDevDetails()">
+                        <span id="dev-arrow">▶</span> Technical Details
+                    </span>
+                    <div class="dev-content" id="dev-content">
+                        <p><strong>Complete Set Model:</strong> Every YES + NO pair is fully backed by 100 CKB locked in the market cell.</p>
+                        <p style="margin-top: 8px;"><strong>Arbitrage &amp; Price Pegging:</strong> The mint/burn mechanism ensures YES + NO prices always sum to 100 CKB. If prices diverge, arbitrageurs can mint (when sum &lt; 100) or burn (when sum &gt; 100) for risk-free profit. This keeps markets efficient. In production, liquidity providers and arbitrage bots would maintain this peg.</p>
+                        <p style="margin-top: 8px;"><strong>On-chain validation:</strong> CKB type scripts enforce collateralization rules. No trust required.</p>
+                        <p style="margin-top: 8px;"><strong>Stack:</strong> Rust smart contracts on CKB + CCC library + JoyID wallet</p>
+                        <p style="margin-top: 8px;">
+                            <a href="https://github.com/JouahriAli/ckb-prediction-market" target="_blank">View Source on GitHub →</a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Markets Section -->
+        <section class="markets-section" id="markets">
+            <div class="container">
+                <div class="markets-header">
+                    <h2 class="section-title" style="margin-bottom: 0;">Markets</h2>
+                    <button class="btn btn-secondary" onclick="app.listMarkets()" id="btn-refresh">
+                        Refresh Markets
+                    </button>
+                </div>
+                <div class="markets-list" id="markets-list">
+                    <div class="empty-state">
+                        <h3>Loading markets...</h3>
+                        <p>Connect your wallet and click refresh to see available markets.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Roadmap -->
+        <section class="roadmap" id="roadmap">
+            <div class="container">
+                <h2 class="section-title">Roadmap</h2>
+                <div class="roadmap-items">
+                    <div class="roadmap-item">
+                        <div class="roadmap-status">
+                            <span class="roadmap-badge done">Done</span>
+                        </div>
+                        <div class="roadmap-content">
+                            <h4>Phase 1: Core Mechanics</h4>
+                            <p>Complete set minting, market resolution, winner claiming. Fully working on testnet.</p>
+                        </div>
+                    </div>
+                    <div class="roadmap-item">
+                        <div class="roadmap-status">
+                            <span class="roadmap-badge next">Next</span>
+                        </div>
+                        <div class="roadmap-content">
+                            <h4>Phase 2: Trading</h4>
+                            <p>AMM or order book for YES/NO token trading. This enables price discovery and speculation.</p>
+                        </div>
+                    </div>
+                    <div class="roadmap-item">
+                        <div class="roadmap-status">
+                            <span class="roadmap-badge planned">Planned</span>
+                        </div>
+                        <div class="roadmap-content">
+                            <h4>Phase 3: Oracle Integration</h4>
+                            <p>Decentralized resolution via oracle networks. Remove trust from outcome reporting.</p>
+                        </div>
+                    </div>
+                    <div class="roadmap-item">
+                        <div class="roadmap-status">
+                            <span class="roadmap-badge planned">Planned</span>
+                        </div>
+                        <div class="roadmap-content">
+                            <h4>Phase 4: RGB++ & BTC Collateral</h4>
+                            <p>Leverage RGB++ protocol to enable Bitcoin-backed prediction markets.</p>
+                        </div>
+                    </div>
+                    <div class="roadmap-item">
+                        <div class="roadmap-status">
+                            <span class="roadmap-badge planned">Planned</span>
+                        </div>
+                        <div class="roadmap-content">
+                            <h4>Phase 5: Mainnet Launch</h4>
+                            <p>Security audits, UI polish, and production deployment on CKB mainnet.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Activity Log -->
+        <section class="container">
+            <div class="log-panel">
+                <h3 class="card-title">Activity Log</h3>
+                <div class="log-container" id="log-container">
+                    <div class="log-entry info">
+                        <span class="log-time">[--:--:--]</span>
+                        Initializing...
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-links">
+                <a href="https://github.com/JouahriAli/ckb-prediction-market" target="_blank">GitHub</a>
+                <a href="https://nervos.org" target="_blank">Nervos Network</a>
+                <a href="admin.html">Admin Panel</a>
+            </div>
+            <p>Built for the CKB Community | Testnet MVP</p>
+        </div>
+    </footer>
+
+    <script type="module" src="js/app.js?v=1"></script>
+    <script>
+        function toggleDevDetails() {
+            const content = document.getElementById('dev-content');
+            const arrow = document.getElementById('dev-arrow');
+            content.classList.toggle('show');
+            arrow.textContent = content.classList.contains('show') ? '▼' : '▶';
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Verdict</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <div class="logo-icon">⚖️</div>
+                    <span>Verdict</span>
+                </div>
+                <nav class="nav-links">
+                    <a href="index.html" class="nav-link">Markets</a>
+                    <a href="index.html#how-it-works" class="nav-link">How it Works</a>
+                    <a href="index.html#roadmap" class="nav-link">Roadmap</a>
+                    <a href="admin.html" class="nav-link active">Admin</a>
+                </nav>
+                <div class="wallet-section" id="wallet-section">
+                    <div class="wallet-info" id="wallet-info" style="display: none;">
+                        <div class="wallet-address" id="wallet-address"></div>
+                        <div class="wallet-balance"><span id="wallet-balance">0</span> CKB</div>
+                    </div>
+                    <button class="btn btn-primary" id="btn-connect" onclick="app.connectWallet()">
+                        Connect Wallet
+                    </button>
+                    <button class="btn btn-secondary" id="btn-disconnect" onclick="app.disconnectWallet()" style="display: none;">
+                        Disconnect
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <!-- Admin Hero -->
+        <section class="hero" style="padding: 40px 0;">
+            <div class="container">
+                <span class="hero-badge">Admin Panel</span>
+                <h1 style="font-size: 36px;">Market Management</h1>
+                <p class="hero-subtitle" style="font-size: 16px;">
+                    Create new prediction markets and resolve existing ones.
+                </p>
+            </div>
+        </section>
+
+        <!-- Admin Section -->
+        <section class="admin-section">
+            <div class="container">
+                <div class="admin-grid">
+                    <!-- Create Market -->
+                    <div class="card">
+                        <h3 class="card-title">Create New Market</h3>
+                        <div class="form-group">
+                            <label class="form-label">Question *</label>
+                            <input type="text" class="input" id="market-question" placeholder="Will BTC reach $150k by end of 2025?">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Description (optional)</label>
+                            <input type="text" class="input" id="market-description" placeholder="Resolution criteria: Based on CoinGecko price at midnight UTC on Dec 31, 2025">
+                        </div>
+                        <button class="btn btn-primary" id="btn-create" onclick="app.createMarket()" style="width: 100%;">
+                            Create Market
+                        </button>
+                        <p style="margin-top: 12px; font-size: 12px; color: var(--text-muted);">
+                            Creating a market costs ~200 CKB (refundable when market is closed).
+                        </p>
+                    </div>
+
+                    <!-- Network Status -->
+                    <div class="card">
+                        <h3 class="card-title">Network Status</h3>
+                        <div style="display: grid; gap: 12px;">
+                            <div style="display: flex; justify-content: space-between; padding: 12px; background: var(--bg-dark); border-radius: 8px;">
+                                <span style="color: var(--text-secondary);">Network</span>
+                                <span style="color: var(--ckb-green); font-weight: 600;" id="network-name">Testnet</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 12px; background: var(--bg-dark); border-radius: 8px;">
+                                <span style="color: var(--text-secondary);">Block Height</span>
+                                <span style="font-weight: 600;" id="block-height">-</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 12px; background: var(--bg-dark); border-radius: 8px;">
+                                <span style="color: var(--text-secondary);">Connection</span>
+                                <span style="font-weight: 600;" id="connection-status">Connecting...</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 12px; background: var(--bg-dark); border-radius: 8px;">
+                                <span style="color: var(--text-secondary);">Contracts</span>
+                                <span style="color: var(--ckb-green); font-weight: 600;" id="contract-status">Deployed</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Markets to Resolve -->
+                <div class="card mt-4">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <h3 class="card-title" style="margin-bottom: 0;">Markets (Resolve)</h3>
+                        <button class="btn btn-secondary btn-sm" onclick="app.listMarkets()" id="btn-refresh">
+                            Refresh
+                        </button>
+                    </div>
+                    <div id="markets-list">
+                        <div class="empty-state" style="padding: 40px 20px;">
+                            <h3>No markets loaded</h3>
+                            <p>Click refresh to load markets.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Activity Log -->
+        <section class="container">
+            <div class="log-panel">
+                <h3 class="card-title">Activity Log</h3>
+                <div class="log-container" id="log-container">
+                    <div class="log-entry info">
+                        <span class="log-time">[--:--:--]</span>
+                        Admin panel ready.
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-links">
+                <a href="https://github.com/JouahriAli/ckb-prediction-market" target="_blank">GitHub</a>
+                <a href="https://nervos.org" target="_blank">Nervos Network</a>
+                <a href="index.html">Back to Markets</a>
+            </div>
+            <p>Built for the CKB Community | Testnet MVP</p>
+        </div>
+    </footer>
+
+    <script type="module" src="js/app.js?v=1"></script>
+</body>
+</html>
