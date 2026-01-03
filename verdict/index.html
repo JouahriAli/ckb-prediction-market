@@ -20,11 +20,12 @@
                     <a href="#markets" class="nav-link active">Markets</a>
                     <a href="#how-it-works" class="nav-link">How it Works</a>
                     <a href="#roadmap" class="nav-link">Roadmap</a>
+                    <a href="test-guide.html" class="nav-link">Test Guide</a>
                     <a href="admin.html" class="nav-link">Admin</a>
                 </nav>
                 <div class="wallet-section" id="wallet-section">
                     <div class="wallet-info" id="wallet-info" style="display: none;">
-                        <div class="wallet-address" id="wallet-address"></div>
+                        <div class="wallet-address" id="wallet-address" onclick="app.copyAddress()" style="cursor: pointer;" title="Click to copy full address"></div>
                         <div class="wallet-balance"><span id="wallet-balance">0</span> CKB</div>
                     </div>
                     <button class="btn btn-primary" id="btn-connect" onclick="app.connectWallet()">
@@ -193,7 +194,7 @@
         </div>
     </footer>
 
-    <script type="module" src="js/app.js?v=1"></script>
+    <script type="module" src="js/app.js?v=1767262892"></script>
     <script>
         function toggleDevDetails() {
             const content = document.getElementById('dev-content');

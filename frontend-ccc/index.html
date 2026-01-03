@@ -433,11 +433,15 @@
             <div class="operation-section">
                 <h3>1. Create Market</h3>
                 <p class="operation-description">
-                    Create a new prediction market cell with initial state (0 YES, 0 NO tokens).
+                    Create a new prediction market. Enter your yes/no question below.
                 </p>
-                <button onclick="app.createMarket()" id="btn-create">
-                    Create Market Cell
-                </button>
+                <div class="input-group" style="flex-direction: column; align-items: stretch;">
+                    <input type="text" id="market-question" placeholder="Will BTC reach $150k by end of 2025?" style="margin-bottom: 10px;">
+                    <input type="text" id="market-description" placeholder="Optional: Add more context or resolution criteria" style="margin-bottom: 10px;">
+                    <button onclick="app.createMarket()" id="btn-create">
+                        Create Market
+                    </button>
+                </div>
             </div>
 
             <div class="operation-section">
@@ -465,6 +469,6 @@
         </div>
     </div>
 
-    <script type="module" src="js/app.js?v=20241224-v12-cleanup"></script>
+    <script type="module" src="js/app.js?v=20241224-v13-supabase"></script>
 </body>
 </html>

@@ -1,10 +1,17 @@
 import { ccc } from "https://esm.sh/@ckb-ccc/ccc@1.1.22";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // Make ccc available globally for debugging
 window.ccc = ccc;
 
+// Supabase client
+const SUPABASE_URL = 'https://klcfshiaxmzcmxhvzhkv.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_h7AK3_SLz8dcz1r5qCKX-w_kvqCz6zP';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+window.supabase = supabase;
+
 // Version marker for cache debugging
-console.log('🔄 App.js loaded - Version: Dec 24 2024 v12 - Cleanup old UI');
+console.log('🔄 App.js loaded - Version: Dec 24 2024 v13 - Supabase integration');
 console.log('📝 Using market contract TX:', '0x5245d3227ee810c34f5a3beb00364e023803f20453de2b32de04af9e19c00590');
 console.log('📝 Using token contract TX:', '0xc85097fc1367d51ba639bda59df53ad94d274d26aa176953a7aff287bcc37652');
 
@@ -15,9 +22,9 @@ const CONFIG = {
     marketTxHash: '0x5245d3227ee810c34f5a3beb00364e023803f20453de2b32de04af9e19c00590',
     marketIndex: '0x0',
 
-    // Token contract (upgraded Dec 24, 2024 - Simplified validation)
-    tokenCodeHash: '0x4cb52d7042988b6db9045383bd709adf043eb37f1988b48b05187f61cb7a17da',
-    tokenTxHash: '0xc85097fc1367d51ba639bda59df53ad94d274d26aa176953a7aff287bcc37652',
+    // Token contract (with net payment calculation for buyer==seller)
+    tokenCodeHash: '0x0dee9b1c589dacb5560f207594b22cead46e895c09d393187eec2b41b66bf1e8',
+    tokenTxHash: '0x7060f10c0e8ecf00b73ce8d6a4b337627a2d096505f09f22a6f955cb7a029362',
     tokenIndex: '0x0',
 
     // Token IDs
@@ -275,6 +282,33 @@ class PredictionMarketApp {
 
             this.log(`Found ${markets.length} market(s)`, 'success');
 
+            // Fetch metadata from Supabase
+            const metadataMap = {};
+            if (markets.length > 0) {
+                const typeHashes = markets.map(m => m.marketTypeHash);
+                const { data: metadataRows, error: metaError } = await supabase
+                    .from('markets')
+                    .select('type_hash, question, description')
+                    .in('type_hash', typeHashes);
+
+                if (metaError) {
+                    this.log(`Warning: Could not fetch metadata: ${metaError.message}`, 'warning');
+                }
+
+                if (metadataRows) {
+                    for (const row of metadataRows) {
+                        metadataMap[row.type_hash] = row;
+                    }
+                }
+            }
+
+            // Attach metadata to markets
+            for (const market of markets) {
+                const meta = metadataMap[market.marketTypeHash];
+                market.question = meta?.question || null;
+                market.description = meta?.description || null;
+            }
+
             // Fetch token balances for each market
             if (await this.signer.isConnected()) {
                 this.log('Fetching token balances...', 'info');
@@ -310,25 +344,22 @@ class PredictionMarketApp {
                 listContainer.innerHTML = '<p style="color: #666; font-size: 14px; padding: 10px;">No markets found. Create one to get started!</p>';
             } else {
                 listContainer.innerHTML = markets.map((market, i) => `
-                    <div style="background: white; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; margin-bottom: 10px;">
-                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
-                            <strong style="color: #1f2937;">Market #${i + 1}</strong>
-                            <span style="font-size: 11px; color: ${market.resolved ? '#059669' : '#d97706'}; font-weight: 600;">
+                    <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                            <div style="flex: 1;">
+                                <div style="font-size: 16px; font-weight: 600; color: #1f2937; margin-bottom: 4px;">
+                                    ${market.question || `Market #${i + 1}`}
+                                </div>
+                                ${market.description ? `<div style="font-size: 13px; color: #6b7280; margin-bottom: 4px;">${market.description}</div>` : ''}
+                            </div>
+                            <span style="font-size: 11px; padding: 4px 8px; border-radius: 12px; font-weight: 600; ${market.resolved ? 'background: #d1fae5; color: #059669;' : 'background: #fef3c7; color: #d97706;'}">
                                 ${market.resolved ? '✓ RESOLVED' : '○ ACTIVE'}
                             </span>
                         </div>
-                        <div style="font-size: 12px; color: #6b7280; margin-bottom: 6px;">
-                            <div style="margin-bottom: 4px;">
-                                <strong>Type ID:</strong>
-                                <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 3px; font-size: 11px;">${market.typeId.slice(0, 10)}...${market.typeId.slice(-8)}</code>
-                            </div>
-                            <div style="margin-bottom: 4px;">
-                                <strong>OutPoint:</strong>
-                                <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 3px; font-size: 11px;">${market.outpoint.txHash.slice(0, 10)}...${market.outpoint.txHash.slice(-8)}:${market.outpoint.index}</code>
-                            </div>
-                            <div style="margin-bottom: 4px;">
-                                <strong>Collateral:</strong> ${ccc.fixedPointToString(market.capacity)} CKB
-                            </div>
+                        <div style="font-size: 12px; color: #9ca3af; margin-bottom: 8px;">
+                            <span title="${market.typeId}">ID: ${market.typeId.slice(0, 8)}...${market.typeId.slice(-6)}</span>
+                            <span style="margin-left: 12px;">Collateral: ${ccc.fixedPointToString(market.capacity)} CKB</span>
+                        </div>
                             <div style="margin-top: 8px; padding: 8px; background: #f0f9ff; border-radius: 4px; border: 1px solid #e0f2fe;">
                                 <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px; font-weight: 600;">Your Tokens:</div>
                                 <div style="display: flex; gap: 12px; font-size: 12px;">
@@ -458,6 +489,17 @@ class PredictionMarketApp {
     async createMarket() {
         if (!await this.signer.isConnected()) {
             this.log('Please connect your wallet first', 'warning');
+            return;
+        }
+
+        // Get market question from input
+        const questionInput = document.getElementById('market-question');
+        const descriptionInput = document.getElementById('market-description');
+        const question = questionInput?.value?.trim();
+        const description = descriptionInput?.value?.trim() || '';
+
+        if (!question) {
+            this.log('Please enter a question for the market', 'warning');
             return;
         }
 
@@ -624,6 +666,28 @@ class PredictionMarketApp {
 
             this.log(`Market created! TX: ${txHash}`, 'success');
             this.log(`View on explorer: https://pudge.explorer.nervos.org/transaction/${txHash}`, 'info');
+
+            // Save market metadata to Supabase
+            const marketTypeHash = finalMarketTypeScript.hash();
+            this.log(`Saving market metadata for ${marketTypeHash.slice(0, 10)}...`, 'info');
+
+            const { error: dbError } = await supabase
+                .from('markets')
+                .insert({
+                    type_hash: marketTypeHash,
+                    question: question,
+                    description: description
+                });
+
+            if (dbError) {
+                this.log(`Warning: Failed to save metadata: ${dbError.message}`, 'warning');
+            } else {
+                this.log('Market metadata saved!', 'success');
+            }
+
+            // Clear inputs
+            if (questionInput) questionInput.value = '';
+            if (descriptionInput) descriptionInput.value = '';
 
             await this.updateBalance();
 

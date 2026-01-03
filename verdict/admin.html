@@ -8,6 +8,37 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
 </head>
 <body>
+    <!-- Password Gate -->
+    <div id="password-gate" style="position: fixed; inset: 0; background: var(--bg-dark); z-index: 9999; display: flex; align-items: center; justify-content: center;">
+        <div class="card" style="max-width: 400px; width: 90%; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 16px;">🔐</div>
+            <h2 style="margin-bottom: 8px;">Admin Access</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 24px;">Enter password to continue</p>
+            <input type="password" class="input" id="admin-password" placeholder="Password" style="margin-bottom: 16px;" onkeypress="if(event.key==='Enter')checkAdminPassword()">
+            <button class="btn btn-primary" onclick="checkAdminPassword()" style="width: 100%;">Enter</button>
+            <p id="password-error" style="color: var(--no-red); margin-top: 12px; display: none;">Incorrect password</p>
+        </div>
+    </div>
+
+    <script>
+        function checkAdminPassword() {
+            const input = document.getElementById('admin-password');
+            const error = document.getElementById('password-error');
+            if (input.value === 'Ckbuilders') {
+                document.getElementById('password-gate').style.display = 'none';
+                sessionStorage.setItem('adminAuth', 'true');
+            } else {
+                error.style.display = 'block';
+                input.value = '';
+                input.focus();
+            }
+        }
+        // Check if already authenticated this session
+        if (sessionStorage.getItem('adminAuth') === 'true') {
+            document.getElementById('password-gate').style.display = 'none';
+        }
+    </script>
+
     <!-- Header -->
     <header class="header">
         <div class="container">
@@ -19,12 +50,12 @@
                 <nav class="nav-links">
                     <a href="index.html" class="nav-link">Markets</a>
                     <a href="index.html#how-it-works" class="nav-link">How it Works</a>
-                    <a href="index.html#roadmap" class="nav-link">Roadmap</a>
+                    <a href="test-guide.html" class="nav-link">Test Guide</a>
                     <a href="admin.html" class="nav-link active">Admin</a>
                 </nav>
                 <div class="wallet-section" id="wallet-section">
                     <div class="wallet-info" id="wallet-info" style="display: none;">
-                        <div class="wallet-address" id="wallet-address"></div>
+                        <div class="wallet-address" id="wallet-address" onclick="app.copyAddress()" style="cursor: pointer;" title="Click to copy full address"></div>
                         <div class="wallet-balance"><span id="wallet-balance">0</span> CKB</div>
                     </div>
                     <button class="btn btn-primary" id="btn-connect" onclick="app.connectWallet()">
@@ -141,6 +172,6 @@
         </div>
     </footer>
 
-    <script type="module" src="js/app.js?v=1"></script>
+    <script type="module" src="js/app.js?v=1767262892"></script>
 </body>
 </html>

@@ -25,14 +25,14 @@
     "createdAt": "2025-12-11T19:49:08.871Z"
   },
   "token": {
-    "txHash": "0x00bd3666b367586c61405e02c13a44f51155149e1fa4632bd33a5c639a86cef8",
-    "codeHash": "0x54f68c08a051facc261167d0a45383cc5fa8b1ea7d1f9d9be5a7e623e27a1320",
+    "txHash": "0x7060f10c0e8ecf00b73ce8d6a4b337627a2d096505f09f22a6f955cb7a029362",
+    "codeHash": "0x0dee9b1c589dacb5560f207594b22cead46e895c09d393187eec2b41b66bf1e8",
     "outPoint": {
-      "txHash": "0x00bd3666b367586c61405e02c13a44f51155149e1fa4632bd33a5c639a86cef8",
+      "txHash": "0x7060f10c0e8ecf00b73ce8d6a4b337627a2d096505f09f22a6f955cb7a029362",
       "index": "0x0"
     },
-    "upgradedAt": "2025-12-11T19:47:05.809Z",
-    "previousVersion": "0xdbe75d9689526fe7eb79b0aed16f2dc6037d99f4ab74311630d3a55ed3da6909"
+    "upgradedAt": "2026-01-02T22:00:00.000Z",
+    "previousVersion": "0x3c1bcee8a0619b2e14054928bb036f2accf1592cbfc2cd555a594957df2793d8"
   },
   "alwaysSuccess": {
     "txHash": "0xc64e8728778b57e7376d9ede254f2fe48e3e943cc2b047a47f6278a0b6b6f739",
