@@ -1,0 +1,6 @@
+{
+  "outputDirectory": "verdict",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/verdict/$1" }
+  ]
+}
