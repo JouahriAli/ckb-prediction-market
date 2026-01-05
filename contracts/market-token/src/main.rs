@@ -6,11 +6,11 @@
 //! 1. If market cell is in inputs: pass (market type script validates everything)
 //! 2. If market cell is NOT in inputs:
 //!    a. Token conservation: output_amount <= input_amount (no minting without market)
-//!    b. Limit order validation: For each input with limit_price > 0:
-//!       - Find matching output (same type, AlwaysSuccess lock, same args, SAME price)
-//!       - Calculate sold_amount = input_amount - output_amount
-//!       - Required payment = sold_amount × limit_price
-//!       - Validate: sum(CKB outputs to seller's lock) == required_payment (EXACT match!)
+//!    b. Limit order validation (CUMULATIVE per seller):
+//!       - Group all limit order inputs by seller_lock_hash
+//!       - For each seller, sum required payments across ALL their orders
+//!       - Validate: sum(CKB outputs to seller) == total_required_for_seller
+//!       - This enables multi-order market buys in a single transaction!
 //!
 //! Limit order cell structure:
 //! - Lock: AlwaysSuccess (permissionless spending)
@@ -25,7 +25,7 @@
 //! - Partial fill: remaining tokens must have SAME price (no price changes!)
 //! - Price changes NOT allowed (including setting to 0 - would enable theft)
 //! - Cancellation: Seller must pay themselves full amount to retrieve tokens
-//! - Payment must be EXACT to prevent frontend exploits
+//! - Payment validation is CUMULATIVE per seller (supports multi-order fills)
 
 #![no_std]
 #![cfg_attr(not(test), no_main)]
@@ -283,43 +283,134 @@ fn calc_net_ckb_payment_to_seller(input_index: usize) -> Result<(u128, bool), Er
     Ok((net_payment, buyer_is_seller))
 }
 
-/// Validate limit order payment for a single input cell
-fn validate_limit_order(input_index: usize, input_amount: u128, limit_price: u128) -> Result<(), Error> {
-    debug!("Validating limit order at input {}: amount={}, price={}", input_index, input_amount, limit_price);
+/// Calculate required payment for a single limit order input
+/// Returns: (sold_amount, required_payment)
+fn calc_required_payment(input_index: usize, input_amount: u128, limit_price: u128) -> Result<u128, Error> {
+    debug!("Calculating payment for input {}: amount={}, price={}", input_index, input_amount, limit_price);
 
-    // Find matching output (same type, AlwaysSuccess lock, same args, same price OR price=0)
-    // SECURITY: Validates partial fill has correct structure
+    // Find matching output (same type, AlwaysSuccess lock, same args, same price)
     let output_amount = find_matching_output_amount(input_index, limit_price)?;
 
     debug!("Found matching output amount: {}", output_amount);
 
     // Calculate sold amount
-    // If output > input, this would underflow - prevent it
     if output_amount > input_amount {
         debug!("Output amount > input amount - invalid!");
         return Err(Error::LimitOrderInvalidAmount);
     }
 
     let sold_amount = input_amount - output_amount;
-    debug!("Sold amount: {}", sold_amount);
-
-    // Calculate required payment
     let required_payment = sold_amount.checked_mul(limit_price).ok_or(Error::Encoding)?;
-    debug!("Required payment: {} Shannon", required_payment);
 
-    // Calculate NET CKB payment to seller (outputs - inputs)
-    // This handles buyer == seller case where change shouldn't count as payment
-    let (actual_payment, buyer_is_seller) = calc_net_ckb_payment_to_seller(input_index)?;
-    debug!("Actual payment to seller: {} Shannon, buyer_is_seller: {}", actual_payment, buyer_is_seller);
+    debug!("Sold: {}, Required payment: {} Shannon", sold_amount, required_payment);
+    Ok(required_payment)
+}
 
-    // If buyer == seller, skip payment validation (they're buying their own tokens)
-    // Otherwise, require exact payment
-    if !buyer_is_seller && actual_payment != required_payment {
-        debug!("Payment mismatch! Required: {}, Actual: {}", required_payment, actual_payment);
-        return Err(Error::LimitOrderPaymentMismatch);
+/// Check if seller at input_index was already processed (any earlier input has same seller)
+fn seller_already_processed(input_index: usize, seller_lock_hash: &[u8], current_script_hash: &[u8]) -> Result<bool, Error> {
+    for (j, cell_type_hash) in QueryIter::new(load_cell_type_hash, Source::Input).enumerate() {
+        if j >= input_index {
+            break; // Only check earlier inputs
+        }
+
+        if let Some(type_hash) = cell_type_hash {
+            if type_hash.as_slice() == current_script_hash {
+                let data = load_cell_data(j, Source::Input)?;
+                let (_amount, limit_price) = parse_token_data(&data)?;
+
+                if limit_price > 0 {
+                    let lock = load_cell_lock(j, Source::Input)?;
+                    let other_seller = lock.args().raw_data();
+                    if other_seller.as_ref() == seller_lock_hash {
+                        return Ok(true); // Same seller found earlier
+                    }
+                }
+            }
+        }
+    }
+    Ok(false)
+}
+
+/// Validate limit order payments with CUMULATIVE validation per seller
+///
+/// Groups all limit order inputs by seller_lock_hash and validates that
+/// the total payment to each seller equals the sum of all their order requirements.
+/// This enables multi-order market buys in a single transaction.
+fn validate_limit_orders_cumulative(current_script_hash: &[u8; 32]) -> Result<(), Error> {
+    debug!("Starting cumulative limit order validation");
+
+    for (i, cell_type_hash) in QueryIter::new(load_cell_type_hash, Source::Input).enumerate() {
+        if let Some(type_hash) = cell_type_hash {
+            if type_hash.as_slice() == current_script_hash.as_slice() {
+                let data = load_cell_data(i, Source::Input)?;
+                let (amount, limit_price) = parse_token_data(&data)?;
+
+                if limit_price > 0 {
+                    // This is a limit order
+                    let input_lock = load_cell_lock(i, Source::Input)?;
+                    let seller_lock_hash = input_lock.args().raw_data();
+
+                    // Check if we already processed this seller (from an earlier input)
+                    if seller_already_processed(i, &seller_lock_hash, current_script_hash.as_slice())? {
+                        debug!("Input {} seller already processed, skipping", i);
+                        continue;
+                    }
+
+                    debug!("Processing seller group starting at input {}", i);
+
+                    // First occurrence of this seller - sum ALL required payments from this seller
+                    let mut total_required: u128 = 0;
+
+                    // Sum required payment from this input
+                    let req = calc_required_payment(i, amount, limit_price)?;
+                    total_required = total_required.checked_add(req).ok_or(Error::Encoding)?;
+
+                    // Sum required payment from any later inputs with same seller
+                    for (j, cell_type_hash_j) in QueryIter::new(load_cell_type_hash, Source::Input).enumerate() {
+                        if j <= i {
+                            continue; // Skip current and earlier inputs
+                        }
+
+                        if let Some(type_hash_j) = cell_type_hash_j {
+                            if type_hash_j.as_slice() == current_script_hash.as_slice() {
+                                let data_j = load_cell_data(j, Source::Input)?;
+                                let (amount_j, limit_price_j) = parse_token_data(&data_j)?;
+
+                                if limit_price_j > 0 {
+                                    let lock_j = load_cell_lock(j, Source::Input)?;
+                                    let seller_j = lock_j.args().raw_data();
+
+                                    if seller_j.as_ref() == seller_lock_hash.as_ref() {
+                                        // Same seller - add to total
+                                        let req_j = calc_required_payment(j, amount_j, limit_price_j)?;
+                                        total_required = total_required.checked_add(req_j).ok_or(Error::Encoding)?;
+                                        debug!("Added input {} to seller group, subtotal: {}", j, total_required);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    debug!("Total required for seller: {} Shannon", total_required);
+
+                    // Calculate actual payment to this seller
+                    let (actual_payment, buyer_is_seller) = calc_net_ckb_payment_to_seller(i)?;
+
+                    debug!("Actual payment: {}, buyer_is_seller: {}", actual_payment, buyer_is_seller);
+
+                    // Validate payment (skip if buyer == seller)
+                    if !buyer_is_seller && actual_payment != total_required {
+                        debug!("CUMULATIVE payment mismatch! Required: {}, Actual: {}", total_required, actual_payment);
+                        return Err(Error::LimitOrderPaymentMismatch);
+                    }
+
+                    debug!("Seller group validated successfully!");
+                }
+            }
+        }
     }
 
-    debug!("Limit order validation passed!");
+    debug!("All limit order validations passed!");
     Ok(())
 }
 
@@ -367,26 +458,11 @@ fn main() -> Result<(), Error> {
 
     debug!("Token conservation check passed - output ({}) <= input ({})", output_amount, input_amount);
 
-    // Additional validation: Check limit order payments
-    // For each input cell with this type script and limit_price > 0, validate payment
+    // Validate limit order payments (CUMULATIVE per seller)
+    // This groups all orders by seller and validates total payment per seller
     let current_script_hash = script.calc_script_hash();
-
-    for (i, cell_type_hash) in QueryIter::new(load_cell_type_hash, Source::Input).enumerate() {
-        if let Some(type_hash) = cell_type_hash {
-            // Check if this input has our type script
-            if type_hash.as_slice() == current_script_hash.as_slice() {
-                // Load cell data and check if it's a limit order (price > 0)
-                let data = load_cell_data(i, Source::Input)?;
-                let (amount, limit_price) = parse_token_data(&data)?;
-
-                if limit_price > 0 {
-                    // This is a limit order - validate payment
-                    debug!("Found limit order in input {}", i);
-                    validate_limit_order(i, amount, limit_price)?;
-                }
-            }
-        }
-    }
+    let hash_bytes: [u8; 32] = current_script_hash.as_slice().try_into().map_err(|_| Error::Encoding)?;
+    validate_limit_orders_cumulative(&hash_bytes)?;
 
     debug!("All validations passed!");
     Ok(())

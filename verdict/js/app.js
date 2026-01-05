@@ -15,9 +15,9 @@ const CONFIG = {
     marketTxHash: '0x5245d3227ee810c34f5a3beb00364e023803f20453de2b32de04af9e19c00590',
     marketIndex: '0x0',
 
-    // Token contract (with net payment calculation for buyer==seller)
-    tokenCodeHash: '0x0dee9b1c589dacb5560f207594b22cead46e895c09d393187eec2b41b66bf1e8',
-    tokenTxHash: '0x7060f10c0e8ecf00b73ce8d6a4b337627a2d096505f09f22a6f955cb7a029362',
+    // Token contract (with cumulative seller payment validation for multi-order fills)
+    tokenCodeHash: '0xee0942ee8f2831c6432876ff7aaf4e637c0728e5a9510055885cdee99785cde6',
+    tokenTxHash: '0x7aa522278e5ced939b9497500db2f36cc87d6ecd7cec44b2b4fc636b91ed7cd5',
     tokenIndex: '0x0',
 
     // Token IDs
@@ -1478,6 +1478,226 @@ class VerdictApp {
     }
 
     // ============================================
+    // Market Buy - Aggregate multiple orders
+    // ============================================
+
+    async marketBuy(marketArrayIndex, tokenType, desiredAmount) {
+        if (!await this.signer.isConnected()) {
+            this.log('Please connect wallet first', 'warning');
+            return;
+        }
+
+        const desiredAmountBigInt = BigInt(desiredAmount);
+        if (desiredAmountBigInt <= 0n) {
+            this.log('Please enter a valid amount', 'warning');
+            return;
+        }
+
+        // Get orders for this token type (already sorted by price ascending)
+        const orders = this.orderBooks[marketArrayIndex]?.[tokenType];
+        if (!orders || orders.length === 0) {
+            this.log(`No ${tokenType} orders available`, 'warning');
+            return;
+        }
+
+        try {
+            this.log(`Market buying ${desiredAmount} ${tokenType} tokens...`, 'info');
+
+            const address = await this.signer.getRecommendedAddress();
+            const { script: buyerLock } = await ccc.Address.fromString(address, this.client);
+
+            // Select orders until we have enough tokens
+            const selectedOrders = [];
+            let totalTokens = 0n;
+            let totalCost = 0n;
+
+            for (const order of orders) {
+                if (totalTokens >= desiredAmountBigInt) break;
+
+                const remaining = desiredAmountBigInt - totalTokens;
+                const takeAmount = order.amount < remaining ? order.amount : remaining;
+                const cost = takeAmount * order.limitPrice;
+
+                selectedOrders.push({
+                    order,
+                    takeAmount,
+                    cost,
+                    isPartial: takeAmount < order.amount
+                });
+
+                totalTokens += takeAmount;
+                totalCost += cost;
+            }
+
+            if (totalTokens < desiredAmountBigInt) {
+                this.log(`Insufficient liquidity. Only ${totalTokens} tokens available.`, 'warning');
+                return;
+            }
+
+            this.log(`Filling ${selectedOrders.length} orders for ${totalTokens} tokens @ ${(Number(totalCost) / 100000000).toFixed(2)} CKB total`, 'info');
+
+            // Group by seller lock hash for payment aggregation
+            const sellerPayments = new Map(); // lockHash -> { lock, totalPayment, address }
+
+            for (const { order, cost } of selectedOrders) {
+                const lockHash = order.sellerLock.hash();
+                if (sellerPayments.has(lockHash)) {
+                    sellerPayments.get(lockHash).totalPayment += cost;
+                } else {
+                    sellerPayments.set(lockHash, {
+                        lock: order.sellerLock,
+                        totalPayment: cost,
+                        address: order.sellerAddress
+                    });
+                }
+            }
+
+            // Build transaction
+            const inputs = [];
+            const outputs = [];
+            const outputsData = [];
+
+            // First, add one buyer CKB cell to ensure there's something to sign
+            // (AlwaysSuccess order cells don't need signatures)
+            let buyerCell = null;
+            for await (const cell of this.client.findCellsByLock(buyerLock, null, true)) {
+                if (!cell.cellOutput.type) { // Pure CKB cell, no type script
+                    buyerCell = cell;
+                    break;
+                }
+            }
+            if (!buyerCell) {
+                this.log('No CKB cells found for signing', 'error');
+                return;
+            }
+            inputs.push({ previousOutput: buyerCell.outPoint });
+
+            // Add all order cells as inputs
+            for (const { order } of selectedOrders) {
+                inputs.push({ previousOutput: order.outPoint });
+            }
+
+            // Output 0: Buyer receives all tokens (16-byte format, for holding)
+            const buyerTokenData = new Uint8Array(16);
+            new DataView(buyerTokenData.buffer).setBigUint64(0, totalTokens, true);
+
+            outputs.push(ccc.CellOutput.from({
+                capacity: ccc.fixedPointFrom(CONFIG.CELL_CAPACITY.TOKEN),
+                lock: buyerLock,
+                type: selectedOrders[0].order.cell.cellOutput.type // Same token type
+            }));
+            outputsData.push('0x' + Array.from(buyerTokenData).map(b => b.toString(16).padStart(2, '0')).join(''));
+
+            // Add remaining order output for partial fill (if any)
+            const lastSelected = selectedOrders[selectedOrders.length - 1];
+            if (lastSelected.isPartial) {
+                const remainingTokens = lastSelected.order.amount - lastSelected.takeAmount;
+                const remainingOrderData = new Uint8Array(32);
+                new DataView(remainingOrderData.buffer).setBigUint64(0, remainingTokens, true);
+                new DataView(remainingOrderData.buffer, 16).setBigUint64(0, lastSelected.order.limitPrice, true);
+
+                outputs.push(ccc.CellOutput.from({
+                    capacity: ccc.fixedPointFrom(CONFIG.CELL_CAPACITY.LIMIT_ORDER),
+                    lock: lastSelected.order.cell.cellOutput.lock, // Keep AlwaysSuccess with seller's lock hash
+                    type: lastSelected.order.cell.cellOutput.type
+                }));
+                outputsData.push('0x' + Array.from(remainingOrderData).map(b => b.toString(16).padStart(2, '0')).join(''));
+            }
+
+            // Add payment outputs for each seller
+            for (const [lockHash, { lock, totalPayment }] of sellerPayments) {
+                const minCapacity = ccc.fixedPointFrom(CONFIG.CELL_CAPACITY.CKB);
+                const paymentCapacity = totalPayment > minCapacity ? totalPayment : minCapacity;
+
+                outputs.push(ccc.CellOutput.from({
+                    capacity: paymentCapacity,
+                    lock: lock
+                }));
+                outputsData.push('0x');
+            }
+
+            const tx = ccc.Transaction.from({ inputs, outputs, outputsData });
+
+            // Add cell deps
+            tx.cellDeps.push(
+                ccc.CellDep.from({ outPoint: { txHash: CONFIG.tokenTxHash, index: CONFIG.tokenIndex }, depType: 'code' })
+            );
+            await tx.addCellDepsOfKnownScripts(this.client, ccc.KnownScript.AlwaysSuccess);
+            await tx.addCellDepsOfKnownScripts(this.client, ccc.KnownScript.Secp256k1Blake160);
+
+            // Complete inputs and fees (buyer cell already added for signing)
+            await tx.completeInputsByCapacity(this.signer);
+            await tx.completeFeeBy(this.signer, 1000);
+
+            // Sign and send
+            const signedTx = await this.signer.signTransaction(tx);
+            const resultTxHash = await this.client.sendTransaction(signedTx);
+
+            // Update Supabase: mark filled orders
+            for (const { order, isPartial } of selectedOrders) {
+                await supabase
+                    .from('limit_orders')
+                    .update({ status: 'filled' })
+                    .eq('tx_hash', order.outPoint.txHash)
+                    .eq('output_index', Number(order.outPoint.index));
+            }
+
+            // Create new order entry for partial fill remainder
+            if (lastSelected.isPartial) {
+                const remainingTokens = lastSelected.order.amount - lastSelected.takeAmount;
+                await supabase.from('limit_orders').insert({
+                    tx_hash: resultTxHash,
+                    output_index: 1, // Remaining order is at output index 1
+                    market_tx_hash: lastSelected.order.cell.cellOutput.type.args.slice(0, 66),
+                    market_index: '0x0',
+                    token_type: tokenType,
+                    seller_address: lastSelected.order.sellerAddress,
+                    amount: Number(remainingTokens),
+                    price_ckb: lastSelected.order.pricePerToken,
+                    status: 'active'
+                });
+            }
+
+            const totalCostCKB = Number(totalCost) / 100000000;
+            this.log(`Bought ${totalTokens} ${tokenType} for ${totalCostCKB.toFixed(2)} CKB! TX: ${resultTxHash}`, 'success');
+            await this.updateBalance();
+
+            // Reload order book
+            if (marketArrayIndex !== null) {
+                const { txHash, marketIndex } = this.orderBooks[marketArrayIndex];
+                await this.loadOrderBooks(marketArrayIndex, txHash, marketIndex);
+            }
+
+            return resultTxHash;
+
+        } catch (error) {
+            this.log(`Error: ${error.message}`, 'error');
+            console.error(error);
+        }
+    }
+
+    // Helper to trigger market buy from UI
+    marketBuyPrompt(marketArrayIndex, tokenType) {
+        const orders = this.orderBooks[marketArrayIndex]?.[tokenType];
+        if (!orders || orders.length === 0) {
+            this.log(`No ${tokenType} orders available`, 'warning');
+            return;
+        }
+
+        const totalAvailable = orders.reduce((sum, o) => sum + o.amount, 0n);
+        const amount = prompt(
+            `Market Buy ${tokenType}\n\n` +
+            `Available: ${totalAvailable} tokens across ${orders.length} orders\n\n` +
+            `How many tokens do you want to buy?`,
+            totalAvailable.toString()
+        );
+
+        if (amount && parseInt(amount) > 0) {
+            this.marketBuy(marketArrayIndex, tokenType, amount);
+        }
+    }
+
+    // ============================================
     // Order Book UI
     // ============================================
 
@@ -1529,7 +1749,16 @@ class VerdictApp {
             return '<div class="empty-orders">No orders yet</div>';
         }
 
-        return orders.map((order, i) => `
+        const totalAvailable = orders.reduce((sum, o) => sum + o.amount, 0n);
+        const marketBuyBtn = orders.length > 1 ? `
+            <div class="market-buy-section" style="margin-bottom: 10px; padding: 8px; background: #1a1a2e; border-radius: 4px;">
+                <button class="btn btn-sm btn-primary" onclick="app.marketBuyPrompt(${marketIndex}, '${tokenType}')" style="width: 100%;">
+                    Market Buy ${tokenType} (${totalAvailable} available)
+                </button>
+            </div>
+        ` : '';
+
+        const ordersList = orders.map((order, i) => `
             <div class="order-item sell-order">
                 <div class="order-price">${order.pricePerToken.toFixed(2)} CKB</div>
                 <div class="order-amount">${order.amount} tokens</div>
@@ -1539,6 +1768,8 @@ class VerdictApp {
                 </button>
             </div>
         `).join('');
+
+        return marketBuyBtn + ordersList;
     }
 
     fillOrderByIndex(marketIndex, orderIndex, tokenType) {
